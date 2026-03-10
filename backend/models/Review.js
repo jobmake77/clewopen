@@ -39,11 +39,13 @@ export const ReviewModel = {
     return result.rows[0] || null;
   },
 
-  // Check if user already reviewed an agent
+  // Check if user already reviewed an agent (only pending or approved reviews)
   async findByUserAndAgent(userId, agentId) {
     const sql = `
       SELECT * FROM reviews
-      WHERE user_id = $1 AND agent_id = $2 AND deleted_at IS NULL
+      WHERE user_id = $1 AND agent_id = $2
+        AND deleted_at IS NULL
+        AND status IN ('pending', 'approved')
     `;
 
     const result = await query(sql, [userId, agentId]);
