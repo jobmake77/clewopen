@@ -1,0 +1,26 @@
+.register-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.register-card {
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+.register-card .ant-card-head {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.register-card .ant-form-item-label {
+  font-weight: 500;
+}

@@ -1,0 +1,46 @@
+.user-center {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.profile-info h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+}
+
+.profile-info p {
+  margin: 0 0 8px 0;
+}
+
+.profile-details {
+  margin-bottom: 24px;
+}
+
+.detail-item {
+  margin-bottom: 16px;
+}
+
+.detail-item strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #333;
+}
+
+.detail-item p {
+  margin: 0;
+  color: #666;
+}
+
+.profile-actions {
+  display: flex;
+  gap: 12px;
+}

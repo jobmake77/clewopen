@@ -1,0 +1,22 @@
+{
+  "name": "Python 代码审查助手",
+  "version": "1.0.0",
+  "description": "自动审查 Python 代码质量，提供改进建议和最佳实践指导",
+  "author": "OpenCLEW Team",
+  "category": "development",
+  "tags": ["python", "code-review", "quality", "linting"],
+  "permissions": {
+    "filesystem": ["read"],
+    "network": ["https"],
+    "system": []
+  },
+  "dependencies": {
+    "skills": ["code-analyzer"],
+    "agents": [],
+    "packages": ["pylint", "flake8"]
+  },
+  "price": {
+    "type": "free",
+    "amount": 0
+  }
+}

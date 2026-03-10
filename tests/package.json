@@ -1,0 +1,13 @@
+{
+  "name": "openclewopen-tests",
+  "version": "1.0.0",
+  "description": "OpenCLEW 自动化测试",
+  "type": "module",
+  "scripts": {
+    "test": "node run-tests.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "pg": "^8.11.3"
+  }
+}
