@@ -27,18 +27,44 @@
 - ✅ 评价列表展示
 - ✅ 评分统计自动更新（数据库触发器）
 - ✅ 评价管理 API（批准/拒绝/删除）
+- ✅ 评价重复提交修复（允许被拒绝后重新提交）
+- ✅ 前端错误处理优化
 
 #### 5. Agent 上传
 - ✅ 上传页面（`/upload-agent`）
 - ✅ 权限控制（仅开发者和管理员）
 - ✅ 表单验证
 - ✅ 文件上传
+- ✅ **增强的文件验证**
+  - ✅ 文件结构验证（必需文件、推荐文件）
+  - ✅ 安全验证（禁止的文件类型、路径遍历防护）
+  - ✅ 内容验证（分类白名单、标签数量限制）
+  - ✅ 详细的错误提示
 
 #### 6. 用户中心
 - ✅ 个人信息展示（`/user`）
 - ✅ 我的下载列表
 - ✅ 我的 Agent 列表（开发者）
 - ✅ 个人信息编辑
+
+#### 7. 管理员功能 ⭐ 新增
+- ✅ **管理员控制台**（`/admin`）
+  - ✅ 统计数据展示（待审核 Agent 数、待审核评价数）
+  - ✅ Tab 切换（Agent 审核、评价审核）
+  - ✅ 权限检查和访问控制
+- ✅ **Agent 审核界面**
+  - ✅ 待审核 Agent 列表
+  - ✅ Agent 详情查看（包含 manifest）
+  - ✅ 批准/拒绝操作（支持拒绝原因）
+- ✅ **评价审核界面**
+  - ✅ 待审核评价列表
+  - ✅ 批准/拒绝/删除操作
+- ✅ **管理员 API**
+  - ✅ `GET /api/agents/admin/all` - 获取所有 Agent
+  - ✅ `GET /api/agents/admin/pending` - 获取待审核 Agent
+  - ✅ `POST /api/agents/admin/:id/approve` - 批准 Agent
+  - ✅ `POST /api/agents/admin/:id/reject` - 拒绝 Agent
+- ✅ Header 管理员入口（"管理控制台"菜单项）
 
 ---
 
@@ -82,10 +108,11 @@
    - [ ] 按评分排序
    - [ ] 按更新时间排序
 
-7. **管理员功能**
-   - [ ] Agent 审核（批准/拒绝）
-   - [ ] 评价管理
-   - [ ] 用户管理
+7. **管理员功能增强**
+   - [ ] 批量审核功能
+   - [ ] 审核历史记录
+   - [ ] 通知系统（审核结果通知开发者）
+   - [ ] 统计报表
 
 ### 低优先级（可选功能）
 
@@ -141,19 +168,36 @@
 访问用户中心 -> 查看"我的 Agent"标签
 ```
 
-### 3. 管理员功能测试（5 分钟）
+### 3. 管理员功能测试（10 分钟）⭐ 更新
 
 ```bash
 # 1. 使用管理员账号登录
 使用 admin@clewopen.com / password123 登录
 
-# 2. 批准评价（通过 API）
-curl -X POST http://localhost:3001/api/reviews/:id/approve \
-  -H "Authorization: Bearer YOUR_TOKEN"
+# 2. 访问管理控制台
+点击用户菜单 -> "管理控制台"
+访问 http://localhost:5173/admin
 
-# 3. 查看所有评价
-curl http://localhost:3001/api/reviews \
-  -H "Authorization: Bearer YOUR_TOKEN"
+# 3. 查看统计数据
+验证显示待审核 Agent 数和待审核评价数
+
+# 4. 测试 Agent 审核
+切换到"Agent 审核"标签
+- 查看待审核 Agent 列表
+- 点击"查看详情"查看 Agent 信息和 manifest
+- 点击"批准"批准 Agent
+- 点击"拒绝"并输入拒绝原因
+
+# 5. 测试评价审核
+切换到"评价审核"标签
+- 查看待审核评价列表
+- 点击"批准"批准评价
+- 点击"拒绝"并输入拒绝原因
+- 点击"删除"删除评价
+
+# 6. 验证权限控制
+退出登录，使用普通用户尝试访问 /admin
+验证被重定向或显示无权限提示
 ```
 
 ---
@@ -177,6 +221,10 @@ curl http://localhost:3001/api/reviews \
 | `/api/reviews/:id/reject` | POST | 拒绝评价 | ✅ |
 | `/api/reviews/:id` | DELETE | 删除评价 | ✅ |
 | `/api/reviews` | GET | 所有评价 | ✅ |
+| `/api/agents/admin/all` | GET | 获取所有 Agent（管理员）| ✅ |
+| `/api/agents/admin/pending` | GET | 获取待审核 Agent | ✅ |
+| `/api/agents/admin/:id/approve` | POST | 批准 Agent | ✅ |
+| `/api/agents/admin/:id/reject` | POST | 拒绝 Agent | ✅ |
 
 ### 🔄 需要测试
 
@@ -190,7 +238,12 @@ curl http://localhost:3001/api/reviews \
 
 ## 🐛 已知问题
 
-目前无已知问题。
+### 已修复
+- ✅ 评价提交错误处理路径不匹配（2026-03-11）
+- ✅ 评价被拒绝后无法重新提交（2026-03-11）
+
+### 当前问题
+- ⚠️ 数据库连接显示 Unhealthy（需要启动 Docker 服务）
 
 ---
 
@@ -219,7 +272,7 @@ curl http://localhost:3001/api/reviews \
 
 ## 📝 测试记录
 
-### 测试日期：2026-03-10
+### 测试日期：2026-03-11 ⭐ 更新
 
 #### 已测试功能
 - ✅ 用户登录
@@ -230,12 +283,16 @@ curl http://localhost:3001/api/reviews \
 - ✅ 评分统计更新
 - ✅ 热门 Agent API
 - ✅ 统计信息 API
+- ✅ 评价提交错误处理
+- ✅ 评价重复提交修复
+- ✅ Agent 上传文件验证
 
 #### 待测试功能
-- 🔄 Agent 上传完整流程
-- 🔄 评价审核流程
-- 🔄 用户中心功能
-- 🔄 权限控制验证
+- 🔄 管理员控制台完整流程
+- 🔄 Agent 审核流程（批准/拒绝）
+- 🔄 评价审核流程（批准/拒绝/删除）
+- 🔄 权限控制验证（管理员页面访问）
+- 🔄 Agent 上传完整流程（包含新的验证规则）
 
 ---
 

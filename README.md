@@ -39,6 +39,7 @@ OpenCLEW 是一个开源的 AI Agent 能力平台，旨在：
 - 分类和标签系统
 - 下载和评价功能
 - 开发者主页
+- 管理员审核系统（Agent 和评价）
 
 ### 开发者工具
 
@@ -203,27 +204,31 @@ openclewopen/
 - [Agent 开发指南](docs/AGENT_DEVELOPMENT.md)
 - [manifest.json 规范](docs/MANIFEST_SPEC.md)
 - [manifest 验证](docs/MANIFEST_VALIDATION.md)
+- [管理员审核指南](docs/ADMIN_REVIEW.md)
 - [API 文档](docs/api/)
 - [数据库设计](docs/DATABASE_SCHEMA.md)
 - [贡献指南](CONTRIBUTING.md)
 
 ## 🗺️ 开发路线图
 
-### Phase 1: MVP 基础平台 ✅ (95%)
+### Phase 1: MVP 基础平台 ✅ (100%)
 - ✅ Agent 标准化格式
 - ✅ 数据库设计
 - ✅ 用户认证系统
 - ✅ Agent 市场
 - ✅ Agent 上传功能
 - ✅ manifest.json 验证
+- ✅ 管理员审核系统
+- ✅ 评价系统
 - ⏳ 开源准备
 
-### Phase 2: 增强功能 (计划中)
+### Phase 2: 增强功能 (进行中)
 - Agent 运行时沙箱
-- 管理员审核系统
 - 搜索优化
 - 性能优化
 - 单元测试
+- 批量审核功能
+- 通知系统
 
 ### Phase 3: 生态建设 (计划中)
 - Agent 模板库
