@@ -114,9 +114,9 @@ export const AgentModel = {
     const sql = `
       INSERT INTO agents (
         author_id, name, slug, description, version,
-        category, tags, price_type, price_amount, price_currency, billing_period,
+        category, tags,
         package_url, manifest, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `;
 
@@ -128,10 +128,6 @@ export const AgentModel = {
       agentData.version,
       agentData.category,
       agentData.tags,
-      agentData.price_type,
-      agentData.price_amount,
-      agentData.price_currency,
-      agentData.billing_period,
       agentData.package_url,
       JSON.stringify(agentData.manifest),
       agentData.status || 'pending',
@@ -194,7 +190,8 @@ export const AgentModel = {
         u.avatar_url
       FROM reviews r
       LEFT JOIN users u ON r.user_id = u.id
-      WHERE r.agent_id = $1
+      WHERE r.resource_id = $1
+        AND r.resource_type = 'agent'
         AND r.deleted_at IS NULL
         AND r.status = 'approved'
       ORDER BY r.created_at DESC
@@ -206,7 +203,7 @@ export const AgentModel = {
 
     // Get total count
     const countResult = await query(
-      'SELECT COUNT(*) as total FROM reviews WHERE agent_id = $1 AND deleted_at IS NULL AND status = \'approved\'',
+      'SELECT COUNT(*) as total FROM reviews WHERE resource_id = $1 AND resource_type = \'agent\' AND deleted_at IS NULL AND status = \'approved\'',
       [agentId]
     );
 
@@ -240,7 +237,7 @@ export const AgentModel = {
         COUNT(d.id) as total_download_records,
         MAX(d.downloaded_at) as last_download_at
       FROM agents a
-      LEFT JOIN downloads d ON a.id = d.agent_id
+      LEFT JOIN downloads d ON a.id = d.resource_id AND d.resource_type = 'agent'
       WHERE a.id = $1 AND a.deleted_at IS NULL
       GROUP BY a.id, a.downloads_count
     `;
@@ -259,8 +256,8 @@ export const AgentModel = {
         COUNT(d.id) as recent_downloads
       FROM agents a
       LEFT JOIN users u ON a.author_id = u.id
-      LEFT JOIN downloads d ON a.id = d.agent_id
-        AND d.downloaded_at >= NOW() - INTERVAL '${days} days'
+      LEFT JOIN downloads d ON a.id = d.resource_id AND d.resource_type = 'agent'
+        AND d.downloaded_at >= NOW() - INTERVAL '1 day' * $2
       WHERE a.deleted_at IS NULL
         AND a.status = 'approved'
       GROUP BY a.id, u.username, u.avatar_url
@@ -268,7 +265,7 @@ export const AgentModel = {
       LIMIT $1
     `;
 
-    const result = await query(sql, [limit]);
+    const result = await query(sql, [limit, days]);
     return result.rows;
   },
 

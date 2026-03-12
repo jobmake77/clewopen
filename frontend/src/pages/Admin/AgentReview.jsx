@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Table, Button, Tag, Modal, message, Space, Descriptions } from 'antd'
-import { CheckOutlined, CloseOutlined, EyeOutlined } from '@ant-design/icons'
-import { getPendingAgents, approveAgent, rejectAgent } from '../../services/adminService'
+import { Table, Button, Tag, Modal, message, Space, Descriptions, Input } from 'antd'
+import { CheckOutlined, CloseOutlined, EyeOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
+import { getPendingAgents, approveAgent, rejectAgent, batchAgentAction } from '../../services/adminService'
+
+const { TextArea } = Input
 
 function AgentReview() {
   const [agents, setAgents] = useState([])
@@ -9,6 +11,12 @@ function AgentReview() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [detailModalVisible, setDetailModalVisible] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState(null)
+  const [rejectModalVisible, setRejectModalVisible] = useState(false)
+  const [rejectingId, setRejectingId] = useState(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [actionLoading, setActionLoading] = useState({})
+  const [selectedRowKeys, setSelectedRowKeys] = useState([])
+  const [batchLoading, setBatchLoading] = useState(false)
 
   useEffect(() => {
     loadAgents()
@@ -35,42 +43,73 @@ function AgentReview() {
     }
   }
 
-  const handleApprove = async (id) => {
-    try {
-      const response = await approveAgent(id)
-      if (response.success) {
-        message.success('批准成功')
-        loadAgents()
-      }
-    } catch (error) {
-      message.error(error.response?.data?.error?.message || '批准失败')
-    }
-  }
-
-  const handleReject = async (id) => {
+  const handleApprove = (id) => {
     Modal.confirm({
-      title: '拒绝 Agent',
-      content: (
-        <div>
-          <p>确定要拒绝这个 Agent 吗？</p>
-          <textarea
-            id="reject-reason"
-            placeholder="请输入拒绝原因（可选）"
-            style={{ width: '100%', marginTop: 10, padding: 8 }}
-            rows={3}
-          />
-        </div>
-      ),
+      title: '确认批准',
+      icon: <ExclamationCircleOutlined />,
+      content: '确定要批准这个 Agent 吗？批准后将在市场上可见。',
       onOk: async () => {
-        const reason = document.getElementById('reject-reason')?.value
+        setActionLoading(prev => ({ ...prev, [id]: true }))
         try {
-          const response = await rejectAgent(id, reason)
+          const response = await approveAgent(id)
           if (response.success) {
-            message.success('已拒绝')
+            message.success('批准成功')
             loadAgents()
           }
         } catch (error) {
-          message.error(error.response?.data?.error?.message || '拒绝失败')
+          message.error(error.response?.data?.error?.message || '批准失败')
+        } finally {
+          setActionLoading(prev => ({ ...prev, [id]: false }))
+        }
+      }
+    })
+  }
+
+  const handleRejectClick = (id) => {
+    setRejectingId(id)
+    setRejectReason('')
+    setRejectModalVisible(true)
+  }
+
+  const handleRejectConfirm = async () => {
+    setActionLoading(prev => ({ ...prev, [rejectingId]: true }))
+    try {
+      const response = await rejectAgent(rejectingId, rejectReason)
+      if (response.success) {
+        message.success('已拒绝')
+        setRejectModalVisible(false)
+        loadAgents()
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '拒绝失败')
+    } finally {
+      setActionLoading(prev => ({ ...prev, [rejectingId]: false }))
+    }
+  }
+
+  const handleBatchAction = async (action) => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请选择要操作的 Agent')
+      return
+    }
+
+    Modal.confirm({
+      title: `批量${action === 'approve' ? '批准' : '拒绝'}`,
+      icon: <ExclamationCircleOutlined />,
+      content: `确定要${action === 'approve' ? '批准' : '拒绝'}选中的 ${selectedRowKeys.length} 个 Agent 吗？`,
+      onOk: async () => {
+        setBatchLoading(true)
+        try {
+          const response = await batchAgentAction(selectedRowKeys, action)
+          if (response.success) {
+            message.success(response.message || `批量操作完成`)
+            setSelectedRowKeys([])
+            loadAgents()
+          }
+        } catch (error) {
+          message.error('批量操作失败')
+        } finally {
+          setBatchLoading(false)
         }
       }
     })
@@ -145,6 +184,7 @@ function AgentReview() {
             size="small"
             icon={<CheckOutlined />}
             onClick={() => handleApprove(record.id)}
+            loading={actionLoading[record.id]}
           >
             批准
           </Button>
@@ -152,7 +192,8 @@ function AgentReview() {
             danger
             size="small"
             icon={<CloseOutlined />}
-            onClick={() => handleReject(record.id)}
+            onClick={() => handleRejectClick(record.id)}
+            loading={actionLoading[record.id]}
           >
             拒绝
           </Button>
@@ -161,13 +202,41 @@ function AgentReview() {
     }
   ]
 
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: setSelectedRowKeys
+  }
+
   return (
     <div>
+      {selectedRowKeys.length > 0 && (
+        <Space style={{ marginBottom: 16 }}>
+          <span>已选择 {selectedRowKeys.length} 项</span>
+          <Button
+            type="primary"
+            icon={<CheckOutlined />}
+            onClick={() => handleBatchAction('approve')}
+            loading={batchLoading}
+          >
+            批量批准
+          </Button>
+          <Button
+            danger
+            icon={<CloseOutlined />}
+            onClick={() => handleBatchAction('reject')}
+            loading={batchLoading}
+          >
+            批量拒绝
+          </Button>
+        </Space>
+      )}
+
       <Table
         columns={columns}
         dataSource={agents}
         loading={loading}
         rowKey="id"
+        rowSelection={rowSelection}
         pagination={{
           ...pagination,
           onChange: (page, pageSize) => {
@@ -197,9 +266,6 @@ function AgentReview() {
             <Descriptions.Item label="分类">
               {selectedAgent.category}
             </Descriptions.Item>
-            <Descriptions.Item label="价格">
-              {selectedAgent.price_type === 'free' ? '免费' : `¥${selectedAgent.price_amount}`}
-            </Descriptions.Item>
             <Descriptions.Item label="描述" span={2}>
               {selectedAgent.description}
             </Descriptions.Item>
@@ -216,9 +282,26 @@ function AgentReview() {
           </Descriptions>
         )}
       </Modal>
+
+      <Modal
+        title="拒绝 Agent"
+        open={rejectModalVisible}
+        onCancel={() => setRejectModalVisible(false)}
+        onOk={handleRejectConfirm}
+        okText="确认拒绝"
+        okType="danger"
+        confirmLoading={actionLoading[rejectingId]}
+      >
+        <p>确定要拒绝这个 Agent 吗？</p>
+        <TextArea
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          placeholder="请输入拒绝原因（可选）"
+          rows={3}
+        />
+      </Modal>
     </div>
   )
 }
 
 export default AgentReview
-

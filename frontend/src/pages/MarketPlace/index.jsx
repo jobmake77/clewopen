@@ -1,164 +1,213 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Row, Col, Card, Input, Select, Pagination, Spin, Tag } from 'antd'
-import { SearchOutlined, StarFilled, DownloadOutlined } from '@ant-design/icons'
-import { fetchAgents } from '../../store/slices/agentSlice'
+import { Row, Col, Card, Statistic, Spin, Tag } from 'antd'
+import {
+  RobotOutlined,
+  UserOutlined,
+  ToolOutlined,
+  ApiOutlined,
+  DollarOutlined,
+  CalendarOutlined,
+} from '@ant-design/icons'
+import { fetchTrendingAgents, fetchPlatformStats } from '../../store/slices/agentSlice'
+import { fetchTrendingSkills } from '../../store/slices/skillSlice'
+import { fetchTrendingMcps } from '../../store/slices/mcpSlice'
+import { getCustomOrders } from '../../services/customOrderService'
+import RankingBoard from '../../components/RankingBoard'
 
-const { Search } = Input
-const { Option } = Select
+const categoryLabelMap = {
+  development: '开发工具',
+  'data-analysis': '数据分析',
+  automation: '自动化',
+  content: '内容创作',
+  business: '商业分析',
+  education: '教育培训',
+  other: '其他',
+}
 
-const categories = [
-  '全部',
-  '软件开发',
-  '数据分析',
-  '内容创作',
-  '通用办公',
-  '设计工具',
-  '营销推广',
-]
+const categoryColorMap = {
+  development: '#1890ff',
+  'data-analysis': '#52c41a',
+  automation: '#fa8c16',
+  content: '#eb2f96',
+  business: '#722ed1',
+  education: '#13c2c2',
+  other: '#8c8c8c',
+}
 
 function MarketPlace() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { list, total, loading } = useSelector((state) => state.agent)
+  const { trending: agentTrending, trendingLoading: agentTrendingLoading, stats, statsLoading } = useSelector((state) => state.agent)
+  const { trending: skillTrending, trendingLoading: skillTrendingLoading } = useSelector((state) => state.skill)
+  const { trending: mcpTrending, trendingLoading: mcpTrendingLoading } = useSelector((state) => state.mcp)
 
-  const [page, setPage] = useState(1)
-  const [pageSize] = useState(20)
-  const [category, setCategory] = useState('全部')
-  const [search, setSearch] = useState('')
+  const [customOrders, setCustomOrders] = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
 
   useEffect(() => {
-    dispatch(fetchAgents({
-      page,
-      pageSize,
-      category: category === '全部' ? undefined : category,
-      search
-    }))
-  }, [dispatch, page, pageSize, category, search])
+    dispatch(fetchPlatformStats())
+    dispatch(fetchTrendingAgents({ limit: 10 }))
+    dispatch(fetchTrendingSkills({ limit: 10 }))
+    dispatch(fetchTrendingMcps({ limit: 10 }))
 
-  const handleSearch = (value) => {
-    setSearch(value)
-    setPage(1)
-  }
-
-  const handleCategoryChange = (value) => {
-    setCategory(value)
-    setPage(1)
-  }
-
-  const handleCardClick = (id) => {
-    navigate(`/agent/${id}`)
-  }
+    // 获取最新定制订单
+    setOrdersLoading(true)
+    getCustomOrders({ page: 1, pageSize: 5, status: 'open' })
+      .then(res => {
+        setCustomOrders(res.data?.items || res.data?.orders || [])
+      })
+      .catch(() => {})
+      .finally(() => setOrdersLoading(false))
+  }, [dispatch])
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1>AI Agent 市场</h1>
-        <p style={{ color: '#666' }}>
-          发现和使用专业的 AI Agent，提升工作效率
+      {/* 页面标题 */}
+      <div style={{ marginBottom: 32 }}>
+        <h1 style={{ fontSize: 28, marginBottom: 8 }}>Clew AI 市场</h1>
+        <p style={{ color: '#666', fontSize: 16 }}>
+          发现 Agent、Skill 和 MCP，构建你的 AI 工作流
         </p>
       </div>
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={18}>
-          <Search
-            placeholder="搜索 Agent..."
-            allowClear
-            enterButton={<SearchOutlined />}
-            size="large"
-            onSearch={handleSearch}
-          />
-        </Col>
-        <Col span={6}>
-          <Select
-            value={category}
-            onChange={handleCategoryChange}
-            style={{ width: '100%' }}
-            size="large"
-          >
-            {categories.map((cat) => (
-              <Option key={cat} value={cat}>
-                {cat}
-              </Option>
-            ))}
-          </Select>
-        </Col>
-      </Row>
-
-      <Spin spinning={loading}>
-        <Row gutter={[16, 16]}>
-          {list.map((agent) => (
-            <Col key={agent.id} xs={24} sm={12} md={8} lg={6}>
-              <Card
-                hoverable
-                onClick={() => handleCardClick(agent.id)}
-                cover={
-                  <div
-                    style={{
-                      height: 160,
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white',
-                      fontSize: 48,
-                    }}
-                  >
-                    🤖
-                  </div>
-                }
-              >
-                <Card.Meta
-                  title={agent.name}
-                  description={
-                    <div>
-                      <p style={{
-                        height: 40,
-                        overflow: 'hidden',
-                        marginBottom: 8
-                      }}>
-                        {agent.description}
-                      </p>
-                      <div style={{ marginBottom: 8 }}>
-                        <Tag color="blue">{agent.category}</Tag>
-                      </div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <span>
-                          <StarFilled style={{ color: '#faad14' }} />
-                          {' '}{agent.rating || 0}
-                        </span>
-                        <span>
-                          <DownloadOutlined />
-                          {' '}{agent.downloads || 0}
-                        </span>
-                      </div>
-                      <div style={{ marginTop: 8, fontWeight: 'bold', color: '#f5222d' }}>
-                        ¥{agent.price?.amount || 0}/{agent.price?.billing_period === 'monthly' ? '月' : '年'}
-                      </div>
-                    </div>
-                  }
-                />
-              </Card>
-            </Col>
-          ))}
+      {/* 1. 统计概览区 */}
+      <Spin spinning={statsLoading}>
+        <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
+          <Col xs={12} sm={6}>
+            <Card>
+              <Statistic
+                title="Agent 总数"
+                value={stats?.totalAgents || 0}
+                prefix={<RobotOutlined />}
+                valueStyle={{ color: '#1890ff' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Card>
+              <Statistic
+                title="注册用户"
+                value={stats?.totalUsers || 0}
+                prefix={<UserOutlined />}
+                valueStyle={{ color: '#52c41a' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Card>
+              <Statistic
+                title="Skill 总数"
+                value={stats?.totalSkills || 0}
+                prefix={<ToolOutlined />}
+                valueStyle={{ color: '#fa8c16' }}
+              />
+            </Card>
+          </Col>
+          <Col xs={12} sm={6}>
+            <Card>
+              <Statistic
+                title="MCP 总数"
+                value={stats?.totalMcps || 0}
+                prefix={<ApiOutlined />}
+                valueStyle={{ color: '#722ed1' }}
+              />
+            </Card>
+          </Col>
         </Row>
       </Spin>
 
-      <div style={{ marginTop: 24, textAlign: 'center' }}>
-        <Pagination
-          current={page}
-          pageSize={pageSize}
-          total={total}
-          onChange={setPage}
-          showSizeChanger={false}
-          showTotal={(total) => `共 ${total} 个 Agent`}
-        />
-      </div>
+      {/* 2. 分类数据看板 */}
+      {stats?.categories && stats.categories.length > 0 && (
+        <Card title="Agent 分类分布" style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {stats.categories.map((cat) => (
+              <Tag
+                key={cat.category}
+                color={categoryColorMap[cat.category] || '#8c8c8c'}
+                style={{ padding: '6px 16px', fontSize: 14, cursor: 'pointer', borderRadius: 6 }}
+                onClick={() => navigate(`/agents?category=${cat.category}`)}
+              >
+                {categoryLabelMap[cat.category] || cat.category}
+                {' '}
+                <strong>{cat.count}</strong>
+                <span style={{ opacity: 0.7, marginLeft: 4 }}>({cat.percentage}%)</span>
+              </Tag>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* 3. Agent 热门榜单 */}
+      <RankingBoard
+        title="Agent 热门榜单"
+        items={agentTrending}
+        loading={agentTrendingLoading}
+        resourceType="agent"
+        onItemClick={(item) => navigate(`/agent/${item.id}`)}
+      />
+
+      {/* 4. Skill 热门榜单 */}
+      <RankingBoard
+        title="Skill 热门榜单"
+        items={skillTrending}
+        loading={skillTrendingLoading}
+        resourceType="skill"
+        onItemClick={(item) => item.package_url && window.open(item.package_url, '_blank')}
+      />
+
+      {/* 5. MCP 热门榜单 */}
+      <RankingBoard
+        title="MCP 热门榜单"
+        items={mcpTrending}
+        loading={mcpTrendingLoading}
+        resourceType="mcp"
+        onItemClick={(item) => item.package_url && window.open(item.package_url, '_blank')}
+      />
+
+      {/* 6. 定制开发悬赏榜 */}
+      <Card
+        title="定制开发悬赏榜"
+        style={{ marginBottom: 24 }}
+        extra={<a onClick={() => navigate('/custom-order')}>查看全部</a>}
+      >
+        <Spin spinning={ordersLoading}>
+          {customOrders.length === 0 ? (
+            <p style={{ color: '#999', textAlign: 'center', padding: 24 }}>暂无悬赏订单</p>
+          ) : (
+            customOrders.map((order) => (
+              <div
+                key={order.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 0',
+                  borderBottom: '1px solid #f0f0f0',
+                  cursor: 'pointer',
+                }}
+                onClick={() => navigate('/custom-order')}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {order.title}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                    <CalendarOutlined style={{ marginRight: 4 }} />
+                    截止 {order.deadline ? new Date(order.deadline).toLocaleDateString() : '未设定'}
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, marginLeft: 16 }}>
+                  <Tag color="gold" style={{ fontSize: 14, padding: '2px 12px' }}>
+                    <DollarOutlined /> {order.budget_min || 0} - {order.budget_max || 0} 元
+                  </Tag>
+                </div>
+              </div>
+            ))
+          )}
+        </Spin>
+      </Card>
     </div>
   )
 }

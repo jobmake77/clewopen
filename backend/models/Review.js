@@ -1,20 +1,21 @@
 import { query } from '../config/database.js';
 
 export const ReviewModel = {
-  // Create review
+  // Create review (supports resource_type for skill/mcp)
   async create(reviewData) {
     const sql = `
-      INSERT INTO reviews (agent_id, user_id, rating, comment, status)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO reviews (resource_id, user_id, rating, comment, status, resource_type)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
 
     const params = [
-      reviewData.agent_id,
+      reviewData.resource_id || reviewData.agent_id,
       reviewData.user_id,
       reviewData.rating,
       reviewData.comment || null,
       reviewData.status || 'pending',
+      reviewData.resource_type || 'agent',
     ];
 
     const result = await query(sql, params);
@@ -27,11 +28,9 @@ export const ReviewModel = {
       SELECT
         r.*,
         u.username,
-        u.avatar_url,
-        a.name as agent_name
+        u.avatar_url
       FROM reviews r
       LEFT JOIN users u ON r.user_id = u.id
-      LEFT JOIN agents a ON r.agent_id = a.id
       WHERE r.id = $1 AND r.deleted_at IS NULL
     `;
 
@@ -43,12 +42,25 @@ export const ReviewModel = {
   async findByUserAndAgent(userId, agentId) {
     const sql = `
       SELECT * FROM reviews
-      WHERE user_id = $1 AND agent_id = $2
+      WHERE user_id = $1 AND resource_id = $2
         AND deleted_at IS NULL
         AND status IN ('pending', 'approved')
     `;
 
     const result = await query(sql, [userId, agentId]);
+    return result.rows[0] || null;
+  },
+
+  // Check if user already reviewed a resource (generic version)
+  async findByUserAndResource(userId, resourceId, resourceType = 'agent') {
+    const sql = `
+      SELECT * FROM reviews
+      WHERE user_id = $1 AND resource_id = $2 AND resource_type = $3
+        AND deleted_at IS NULL
+        AND status IN ('pending', 'approved')
+    `;
+
+    const result = await query(sql, [userId, resourceId, resourceType]);
     return result.rows[0] || null;
   },
 

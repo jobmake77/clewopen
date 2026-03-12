@@ -20,6 +20,8 @@ OpenCLEW 是一个开源的 AI Agent 能力平台，旨在：
 
 - 🎯 **标准化 Agent 打包格式** - 统一的 manifest.json 规范
 - 🏪 **Agent 市场** - 发现、分享和下载 Agent
+- 🧪 **Agent 试用沙盒** - 下载前在线试用 Agent（LLM 驱动）
+- 🔧 **Skill / MCP 生态** - 可复用的能力组件市场
 - ✅ **自动验证** - 上传时自动验证 Agent 包格式
 - 🔐 **权限管理** - 细粒度的权限控制系统
 - 📦 **依赖管理** - 清晰的依赖声明和管理
@@ -38,8 +40,21 @@ OpenCLEW 是一个开源的 AI Agent 能力平台，旨在：
 - 浏览和搜索 Agent
 - 分类和标签系统
 - 下载和评价功能
+- **在线试用 Agent**（每用户每 Agent 3 次试用）
 - 开发者主页
 - 管理员审核系统（Agent 和评价）
+
+### Skill / MCP 生态
+
+- Skill 库 — Agent 可复用的技能组件
+- MCP 库 — Model Context Protocol 服务
+- GitHub 数据自动同步
+- Agent 依赖声明与关联展示
+
+### 定制开发
+
+- 需求发布与接单
+- CustomOrder 流程管理
 
 ### 开发者工具
 
@@ -122,10 +137,6 @@ cd my-agent
     "agents": [],
     "packages": []
   },
-  "price": {
-    "type": "free",
-    "amount": 0
-  }
 }
 ```
 
@@ -211,30 +222,27 @@ openclewopen/
 
 ## 🗺️ 开发路线图
 
-### Phase 1: MVP 基础平台 ✅ (100%)
-- ✅ Agent 标准化格式
-- ✅ 数据库设计
-- ✅ 用户认证系统
-- ✅ Agent 市场
-- ✅ Agent 上传功能
-- ✅ manifest.json 验证
-- ✅ 管理员审核系统
-- ✅ 评价系统
-- ⏳ 开源准备
+### Phase 1: MVP 基础平台 ✅
+- ✅ Agent 标准化格式、数据库设计、用户认证
+- ✅ Agent 市场、上传验证、管理员审核、评价系统
 
-### Phase 2: 增强功能 (进行中)
-- Agent 运行时沙箱
-- 搜索优化
-- 性能优化
-- 单元测试
-- 批量审核功能
-- 通知系统
+### Phase 2: 平台丰富 ✅
+- ✅ Agent 包内容在线预览
+- ✅ Skill 库 + MCP 库全栈实现
+- ✅ Agent 依赖关联（Skill/MCP）
+- ✅ 定制开发页面
 
-### Phase 3: 生态建设 (计划中)
-- Agent 模板库
-- 开发者文档
-- 社区功能
-- CI/CD 集成
+### Phase 3: 首页改版 + 数据源 ✅
+- ✅ GitHub / OpenClaw 数据自动同步
+- ✅ 首页统计看板 + 榜单
+
+### Phase 4: 付费移除 + 试用沙盒 ✅
+- ✅ 移除所有付费/订单系统（开源项目不涉及付费）
+- ✅ Agent 试用沙盒（LLM 驱动，管理员配置 API）
+- ✅ Admin LLM 配置管理页面
+
+### Phase 5: 待规划
+- 自动化测试、API 文档、国际化
 
 ## 🤝 贡献
 

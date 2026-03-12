@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Form, Input, Select, Upload, Button, InputNumber, Tag, message } from 'antd'
+import { Form, Input, Select, Upload, Button, Tag, message } from 'antd'
 import { UploadOutlined, PlusOutlined } from '@ant-design/icons'
 import { uploadAgent } from '../../services/agentService'
 import './index.css'
@@ -26,13 +26,14 @@ const UploadAgent = () => {
     { value: 'other', label: '其他' }
   ]
 
-  const priceTypes = [
-    { value: 'free', label: '免费' },
-    { value: 'one-time', label: '一次性购买' },
-    { value: 'subscription', label: '订阅制' }
-  ]
-
   const handleFileChange = ({ fileList: newFileList }) => {
+    if (newFileList.length > 0) {
+      const file = newFileList[0].originFileObj || newFileList[0]
+      if (file.size > 50 * 1024 * 1024) {
+        message.error('文件大小不能超过 50MB')
+        return
+      }
+    }
     setFileList(newFileList)
   }
 
@@ -63,13 +64,6 @@ const UploadAgent = () => {
       formData.append('category', values.category)
       formData.append('version', values.version)
 
-      // 处理价格
-      const price = {
-        type: values.priceType,
-        amount: values.priceType === 'free' ? 0 : values.amount || 0
-      }
-      formData.append('price', JSON.stringify(price))
-
       // 处理标签
       formData.append('tags', JSON.stringify(tags))
 
@@ -77,7 +71,7 @@ const UploadAgent = () => {
 
       if (response.success) {
         message.success('Agent 上传成功，等待审核')
-        navigate('/user-center')
+        navigate('/user')
       }
     } catch (error) {
       message.error(error.response?.data?.error || '上传失败')
@@ -96,7 +90,7 @@ const UploadAgent = () => {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          initialValues={{ priceType: 'free' }}
+          initialValues={{}}
         >
           <Form.Item
             label="Agent 名称"
@@ -169,44 +163,6 @@ const UploadAgent = () => {
                 </Button>
               </div>
             </div>
-          </Form.Item>
-
-          <Form.Item
-            label="定价类型"
-            name="priceType"
-            rules={[{ required: true, message: '请选择定价类型' }]}
-          >
-            <Select>
-              {priceTypes.map(type => (
-                <Option key={type.value} value={type.value}>
-                  {type.label}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            noStyle
-            shouldUpdate={(prevValues, currentValues) =>
-              prevValues.priceType !== currentValues.priceType
-            }
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('priceType') !== 'free' ? (
-                <Form.Item
-                  label="价格（元）"
-                  name="amount"
-                  rules={[{ required: true, message: '请输入价格' }]}
-                >
-                  <InputNumber
-                    min={0}
-                    precision={2}
-                    style={{ width: '100%' }}
-                    placeholder="输入价格"
-                  />
-                </Form.Item>
-              ) : null
-            }
           </Form.Item>
 
           <Form.Item

@@ -6,7 +6,7 @@ import { logger } from '../config/logger.js'
  */
 const MANIFEST_SCHEMA = {
   required: ['name', 'version', 'description', 'author'],
-  optional: ['category', 'tags', 'permissions', 'dependencies', 'price', 'icon', 'homepage', 'repository'],
+  optional: ['category', 'tags', 'permissions', 'dependencies', 'icon', 'homepage', 'repository'],
   types: {
     name: 'string',
     version: 'string',
@@ -16,7 +16,6 @@ const MANIFEST_SCHEMA = {
     tags: 'array',
     permissions: 'object',
     dependencies: 'object',
-    price: 'object',
     icon: 'string',
     homepage: 'string',
     repository: 'string'
@@ -92,25 +91,6 @@ const validateDependencies = (dependencies) => {
   for (const type of validTypes) {
     if (dependencies[type] && !Array.isArray(dependencies[type])) {
       return { valid: false, error: `依赖 ${type} 必须是数组` }
-    }
-  }
-
-  return { valid: true }
-}
-
-/**
- * 验证价格配置
- */
-const validatePrice = (price) => {
-  const validTypes = ['free', 'one-time', 'subscription']
-
-  if (!price.type || !validTypes.includes(price.type)) {
-    return { valid: false, error: '价格类型必须是 free, one-time 或 subscription' }
-  }
-
-  if (price.type !== 'free') {
-    if (typeof price.amount !== 'number' || price.amount <= 0) {
-      return { valid: false, error: '非免费 Agent 必须设置有效的价格' }
     }
   }
 
@@ -329,18 +309,77 @@ export const validateManifest = (manifest) => {
     }
   }
 
-  // 验证价格
-  if (manifest.price) {
-    const priceResult = validatePrice(manifest.price)
-    if (!priceResult.valid) {
-      errors.push(priceResult.error)
-    }
-  }
-
   return {
     valid: errors.length === 0,
     errors,
     manifest
+  }
+}
+
+/**
+ * 验证 Skill/MCP 包的文件结构（宽松版本）
+ */
+const validateResourceFileStructure = (files, resourceType) => {
+  const errors = []
+  const warnings = []
+
+  const requiredFiles = ['manifest.json']
+
+  const recommendedFiles = resourceType === 'skill'
+    ? ['README.md', 'skill.js', 'skill.ts', 'index.js', 'index.ts']
+    : ['README.md', 'server.js', 'server.ts', 'index.js', 'index.ts']
+
+  for (const required of requiredFiles) {
+    const found = files.some(f => f === required || f.endsWith('/' + required))
+    if (!found) {
+      errors.push(`缺少必需文件: ${required}`)
+    }
+  }
+
+  const hasRecommended = recommendedFiles.some(r => files.some(f => f === r || f.endsWith('/' + r)))
+  if (!hasRecommended) {
+    warnings.push(`建议添加入口文件: ${recommendedFiles.join(' 或 ')}`)
+  }
+
+  return { errors, warnings }
+}
+
+/**
+ * 验证 Skill/MCP 包（宽松的 manifest 验证）
+ */
+export const validateResourcePackage = (zipPath, resourceType = 'skill') => {
+  const allErrors = []
+  const allWarnings = []
+
+  const extractResult = extractManifest(zipPath)
+  if (!extractResult.success) {
+    return { valid: false, errors: [extractResult.error], warnings: [] }
+  }
+
+  // 只验证基本字段
+  const manifest = extractResult.manifest
+  if (!manifest.name) allErrors.push('缺少必填字段: name')
+  if (!manifest.version) allErrors.push('缺少必填字段: version')
+  if (!manifest.description) allErrors.push('缺少必填字段: description')
+
+  if (manifest.version && !validateVersion(manifest.version)) {
+    allErrors.push('版本号格式错误，应符合语义化版本规范 (如 1.0.0)')
+  }
+
+  const structureResult = validateResourceFileStructure(extractResult.files, resourceType)
+  allErrors.push(...structureResult.errors)
+  allWarnings.push(...structureResult.warnings)
+
+  const securityResult = validateFileSecurity(extractResult.files)
+  allErrors.push(...securityResult.errors)
+  allWarnings.push(...securityResult.warnings)
+
+  return {
+    valid: allErrors.length === 0,
+    errors: allErrors,
+    warnings: allWarnings,
+    manifest: extractResult.manifest,
+    files: extractResult.files
   }
 }
 

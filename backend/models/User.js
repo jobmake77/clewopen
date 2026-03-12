@@ -163,7 +163,7 @@ export const UserModel = {
         a.name as agent_name,
         a.slug as agent_slug
       FROM downloads d
-      LEFT JOIN agents a ON d.agent_id = a.id
+      LEFT JOIN agents a ON d.resource_id = a.id AND d.resource_type = 'agent'
       WHERE d.user_id = $1
       ORDER BY d.downloaded_at DESC
       LIMIT $2 OFFSET $3

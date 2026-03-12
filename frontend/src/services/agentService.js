@@ -46,3 +46,11 @@ export const updateAgent = (id, formData) => {
 export const deleteAgent = (id) => {
   return api.delete(`/agents/${id}`)
 }
+
+export const getTrendingAgents = (params) => {
+  return api.get('/agents/trending', { params })
+}
+
+export const getPlatformStats = () => {
+  return api.get('/agents/platform-stats')
+}

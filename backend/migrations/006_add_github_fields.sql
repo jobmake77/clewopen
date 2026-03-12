@@ -1,0 +1,9 @@
+-- 006: Add GitHub fields to skills and mcps tables
+
+ALTER TABLE skills ADD COLUMN IF NOT EXISTS github_stars INTEGER DEFAULT 0;
+ALTER TABLE skills ADD COLUMN IF NOT EXISTS github_url TEXT;
+ALTER TABLE skills ADD COLUMN IF NOT EXISTS author_avatar_url TEXT;
+
+ALTER TABLE mcps ADD COLUMN IF NOT EXISTS github_stars INTEGER DEFAULT 0;
+ALTER TABLE mcps ADD COLUMN IF NOT EXISTS github_url TEXT;
+ALTER TABLE mcps ADD COLUMN IF NOT EXISTS author_avatar_url TEXT;

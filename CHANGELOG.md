@@ -8,34 +8,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **管理员审核系统** - 完整的 Agent 和评价审核功能
-  - 管理员控制台页面（统计数据、Tab 切换）
-  - Agent 审核界面（查看详情、批准、拒绝）
-  - 评价审核界面（批准、拒绝、删除）
-  - 管理员专用 API 路由
-  - 权限保护和访问控制
-- **增强的 Agent 上传验证**
-  - 文件结构验证（必需文件、推荐文件、目录检查）
-  - 安全验证（禁止的文件类型、路径遍历防护）
-  - 内容验证（分类白名单、标签数量限制）
-  - 详细的错误提示信息
-- 管理员服务层 API 封装
-- Agent 状态管理（pending → approved/rejected）
+- **Agent 试用沙盒** - 用户下载前可在线试用 Agent
+  - 后端 LLM 服务抽象层（自动识别 Anthropic / OpenAI 兼容 API）
+  - Agent 配置文件读取工具（从 zip 包提取 IDENTITY/RULES/MEMORY）
+  - 试用 API：`POST /agents/:id/trial`（每用户每 Agent 限 3 次）
+  - 试用历史 API：`GET /agents/:id/trial/history`
+  - 前端聊天 Modal（消息列表 + 剩余次数 + 历史加载）
+- **Admin LLM 配置管理**
+  - CRUD API：`/api/admin/llm-configs`（列表/新建/更新/激活/删除）
+  - 管理后台 LLM 配置页面（Table + Modal 表单）
+  - 支持配置 provider_name、api_url、api_key、model_id、max_tokens、temperature
+- DB 迁移 008：agent_trials + llm_configs 表
+
+### Removed
+- **付费/订单系统完全移除**（项目开源，仅 CustomOrder 涉及金钱）
+  - 删除 orders 表、Order model/controller/routes
+  - 移除 agents/skills/mcps 的 price_type/price_amount/price_currency/billing_period 列
+  - 移除前端所有价格标签、购买按钮、定价表单
+  - 移除 manifest 的 price 校验
+  - DB 迁移 007：DROP orders + ALTER TABLE 删 price 列
 
 ### Changed
-- 优化前端错误处理，支持多层级错误消息访问
-- 改进 API 响应拦截器，统一错误格式
-- 更新 Header 组件，为管理员添加"管理控制台"入口
+- `backend/api/agents/preview.js` 重构为使用共享 `agentPackageReader` 工具
+- `backend/models/Resource.js` / `Agent.js` — create() 去掉 price 字段
+- `backend/api/shared/resourceUpload.js` — 去掉 price 解析
+- `backend/services/syncService.js` / `scripts/fetchExternalData.js` — INSERT 去掉 price 列
+
+## [0.3.0] - 2026-03-12
+
+### Added
+- **首页改版** — 统计看板 + Agent/Skill/MCP 三榜单
+- **GitHub / OpenClaw 数据自动同步**
+- DB 迁移 006：github_stars, github_url, author_avatar_url
+
+## [0.2.0] - 2026-03-12
+
+### Added
+- **Skill 库全栈** — 市场/详情/上传 + 通用 Resource Model
+- **MCP 库全栈** — 市场/详情/上传
+- **Agent 包内容在线预览**（zip 中 markdown 文件渲染）
+- **Agent 依赖关联展示**（Skill/MCP 卡片跳转）
+- **定制开发页面**（需求提交与列表）
+- DB 迁移 004-005：notifications, skills, mcps 表
+
+## [0.1.1] - 2026-03-11
+
+### Added
+- **管理员审核系统** — Agent 和评价审核
+- **增强的 Agent 上传验证** — 文件结构 + 安全验证
+- 管理员服务层 API 封装
 
 ### Fixed
-- **评价提交功能** - 修复前端错误处理路径不匹配问题
-- **评价重复提交** - 允许用户在评价被拒绝后重新提交
-- 修复 `findByUserAndAgent` 查询逻辑，只检查 pending 和 approved 状态
-
-### Security
-- 所有管理员接口使用 `authorize('admin')` 保护
-- 前端管理页面包含权限检查和重定向
-- 增强的文件上传安全验证
+- 评价提交错误处理路径不匹配
+- 评价被拒绝后无法重新提交
 
 ## [0.1.0] - 2026-03-10
 

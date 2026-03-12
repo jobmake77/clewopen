@@ -10,12 +10,9 @@ export const getAllReviews = async (req, res, next) => {
       SELECT
         r.*,
         u.username,
-        u.avatar_url,
-        a.name as agent_name,
-        a.slug as agent_slug
+        u.avatar_url
       FROM reviews r
       LEFT JOIN users u ON r.user_id = u.id
-      LEFT JOIN agents a ON r.agent_id = a.id
       WHERE r.deleted_at IS NULL
     `;
 
@@ -29,9 +26,9 @@ export const getAllReviews = async (req, res, next) => {
       paramIndex++;
     }
 
-    // Filter by agent
+    // Filter by resource
     if (agentId) {
-      sql += ` AND r.agent_id = $${paramIndex}`;
+      sql += ` AND r.resource_id = $${paramIndex}`;
       params.push(agentId);
       paramIndex++;
     }
@@ -62,7 +59,7 @@ export const getAllReviews = async (req, res, next) => {
     }
 
     if (agentId) {
-      countSql += ` AND r.agent_id = $${countParamIndex}`;
+      countSql += ` AND r.resource_id = $${countParamIndex}`;
       countParams.push(agentId);
     }
 

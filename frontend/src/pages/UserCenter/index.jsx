@@ -20,7 +20,8 @@ import {
   DownloadOutlined,
   StarOutlined,
   EditOutlined,
-  LockOutlined
+  LockOutlined,
+  ReloadOutlined
 } from '@ant-design/icons'
 import { updateProfile } from '../../store/slices/authSlice'
 import api from '../../services/api'
@@ -42,12 +43,6 @@ function UserCenter() {
   const [passwordModalVisible, setPasswordModalVisible] = useState(false)
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login')
-    }
-  }, [isAuthenticated, navigate])
 
   useEffect(() => {
     if (activeTab === 'downloads') {
@@ -222,7 +217,7 @@ function UserCenter() {
       children: (
         <Card>
           <div style={{ marginBottom: 16 }}>
-            <Button type="primary" onClick={() => navigate('/agent/upload')}>
+            <Button type="primary" onClick={() => navigate('/upload-agent')}>
               上传新 Agent
             </Button>
           </div>
@@ -234,33 +229,72 @@ function UserCenter() {
           ) : myAgents.length > 0 ? (
             <List
               dataSource={myAgents}
-              renderItem={(item) => (
-                <List.Item
-                  actions={[
-                    <span>
-                      <DownloadOutlined /> {item.downloads || 0}
-                    </span>,
-                    <span>
-                      <StarOutlined /> {item.rating || 0}
-                    </span>,
-                    <Button
-                      type="link"
-                      onClick={() => navigate(`/agent/${item.id}`)}
-                    >
-                      查看
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={item.name}
-                    description={item.description}
-                  />
-                  <div>
-                    <Tag color="blue">{item.category}</Tag>
-                    <Tag>v{item.version}</Tag>
-                  </div>
-                </List.Item>
-              )}
+              renderItem={(item) => {
+                const statusMap = {
+                  pending: { color: 'orange', text: '待审核' },
+                  approved: { color: 'green', text: '已通过' },
+                  rejected: { color: 'red', text: '已拒绝' }
+                }
+                const statusInfo = statusMap[item.status] || { color: 'default', text: item.status }
+                const rejectionReason = item.metadata?.rejection_reason
+
+                return (
+                  <List.Item
+                    actions={[
+                      <span key="downloads">
+                        <DownloadOutlined /> {item.downloads_count || 0}
+                      </span>,
+                      <span key="rating">
+                        <StarOutlined /> {item.rating_average || 0}
+                      </span>,
+                      item.status === 'approved' ? (
+                        <Button
+                          key="view"
+                          type="link"
+                          onClick={() => navigate(`/agent/${item.id}`)}
+                        >
+                          查看
+                        </Button>
+                      ) : null,
+                      item.status === 'rejected' ? (
+                        <Button
+                          key="resubmit"
+                          type="link"
+                          icon={<ReloadOutlined />}
+                          onClick={() => navigate('/upload-agent')}
+                        >
+                          重新提交
+                        </Button>
+                      ) : null
+                    ].filter(Boolean)}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <span>
+                          {item.name}
+                          <Tag color={statusInfo.color} style={{ marginLeft: 8 }}>
+                            {statusInfo.text}
+                          </Tag>
+                        </span>
+                      }
+                      description={
+                        <div>
+                          <p style={{ margin: 0 }}>{item.description}</p>
+                          {item.status === 'rejected' && rejectionReason && (
+                            <p style={{ color: '#ff4d4f', margin: '4px 0 0' }}>
+                              拒绝原因: {rejectionReason}
+                            </p>
+                          )}
+                        </div>
+                      }
+                    />
+                    <div>
+                      <Tag color="blue">{item.category}</Tag>
+                      <Tag>v{item.version}</Tag>
+                    </div>
+                  </List.Item>
+                )
+              }}
             />
           ) : (
             <Empty description="暂无发布的 Agent" />

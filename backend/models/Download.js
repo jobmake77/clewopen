@@ -1,20 +1,21 @@
 import { query } from '../config/database.js';
 
 export const DownloadModel = {
-  // Record a download
+  // Record a download (supports resource_type for skill/mcp)
   async create(downloadData) {
     const sql = `
-      INSERT INTO downloads (agent_id, user_id, version, ip_address, user_agent)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO downloads (resource_id, user_id, version, ip_address, user_agent, resource_type)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
 
     const params = [
-      downloadData.agent_id,
+      downloadData.resource_id || downloadData.agent_id,
       downloadData.user_id,
       downloadData.version,
       downloadData.ip_address || null,
       downloadData.user_agent || null,
+      downloadData.resource_type || 'agent',
     ];
 
     const result = await query(sql, params);
@@ -26,7 +27,7 @@ export const DownloadModel = {
     const sql = `
       SELECT COUNT(*) as count
       FROM downloads
-      WHERE user_id = $1 AND agent_id = $2
+      WHERE user_id = $1 AND resource_id = $2
     `;
 
     const result = await query(sql, [userId, agentId]);
@@ -41,7 +42,7 @@ export const DownloadModel = {
         COUNT(DISTINCT user_id) as unique_users,
         COUNT(DISTINCT DATE(downloaded_at)) as active_days
       FROM downloads
-      WHERE agent_id = $1
+      WHERE resource_id = $1
     `;
 
     const result = await query(sql, [agentId]);
@@ -57,7 +58,7 @@ export const DownloadModel = {
         a.slug as agent_slug,
         a.category
       FROM downloads d
-      LEFT JOIN agents a ON d.agent_id = a.id
+      LEFT JOIN agents a ON d.resource_id = a.id AND d.resource_type = 'agent'
       WHERE d.user_id = $1
       ORDER BY d.downloaded_at DESC
       LIMIT $2 OFFSET $3

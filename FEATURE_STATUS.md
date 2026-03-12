@@ -11,10 +11,12 @@
 - ✅ 角色权限控制（user/developer/admin）
 
 #### 2. Agent 市场
+- ✅ 首页统计看板 + Agent/Skill/MCP 三榜单
 - ✅ Agent 列表展示（`/`）
 - ✅ Agent 详情页（`/agent/:id`）
-- ✅ Agent 信息展示（名称、描述、标签、价格、评分、下载数）
+- ✅ Agent 信息展示（名称、描述、标签、评分、下载数）
 - ✅ 热门 Agent API（`GET /api/agents/trending`）
+- ✅ 平台统计 API（`GET /api/agents/platform-stats`）
 
 #### 3. Agent 下载
 - ✅ 真实文件下载功能
@@ -41,198 +43,125 @@
   - ✅ 内容验证（分类白名单、标签数量限制）
   - ✅ 详细的错误提示
 
-#### 6. 用户中心
+#### 6. Agent 试用沙盒 ⭐ 新增
+- ✅ 用户可在下载前在线试用 Agent
+- ✅ 系统加载 Agent 配置文件（IDENTITY/RULES/MEMORY）作为 system prompt
+- ✅ 调用管理员配置的 LLM API 生成回复
+- ✅ 每用户每 Agent 限 3 次试用
+- ✅ 试用历史记录保存和加载
+- ✅ 前端聊天 Modal 界面
+
+#### 7. Agent 包内容预览
+- ✅ 在线预览 Agent zip 包中的 markdown 文件
+- ✅ react-markdown 渲染
+
+#### 8. Agent 依赖关联
+- ✅ 后端 getAgentDependencies API
+- ✅ 前端 AgentDetail "依赖" Tab（Skill/MCP 卡片跳转）
+
+#### 9. Skill 库（全栈）
+- ✅ Skill 市场页面（`/skills`）
+- ✅ Skill 详情页面（`/skill/:id`）
+- ✅ Skill 上传（`/upload-skill`）
+- ✅ Skill 后端 CRUD + 管理员审核
+
+#### 10. MCP 库（全栈）
+- ✅ MCP 市场页面（`/mcps`）
+- ✅ MCP 详情页面（`/mcp/:id`）
+- ✅ MCP 上传（`/upload-mcp`）
+- ✅ MCP 后端 CRUD + 管理员审核
+
+#### 11. 用户中心
 - ✅ 个人信息展示（`/user`）
 - ✅ 我的下载列表
 - ✅ 我的 Agent 列表（开发者）
 - ✅ 个人信息编辑
 
-#### 7. 管理员功能 ⭐ 新增
+#### 12. 管理员功能
 - ✅ **管理员控制台**（`/admin`）
-  - ✅ 统计数据展示（待审核 Agent 数、待审核评价数）
-  - ✅ Tab 切换（Agent 审核、评价审核）
+  - ✅ 统计数据展示
+  - ✅ Tab 切换（Agent 审核、评价审核、数据同步、LLM 配置）
   - ✅ 权限检查和访问控制
 - ✅ **Agent 审核界面**
   - ✅ 待审核 Agent 列表
   - ✅ Agent 详情查看（包含 manifest）
   - ✅ 批准/拒绝操作（支持拒绝原因）
+  - ✅ 批量审核
 - ✅ **评价审核界面**
   - ✅ 待审核评价列表
   - ✅ 批准/拒绝/删除操作
-- ✅ **管理员 API**
-  - ✅ `GET /api/agents/admin/all` - 获取所有 Agent
-  - ✅ `GET /api/agents/admin/pending` - 获取待审核 Agent
-  - ✅ `POST /api/agents/admin/:id/approve` - 批准 Agent
-  - ✅ `POST /api/agents/admin/:id/reject` - 拒绝 Agent
-- ✅ Header 管理员入口（"管理控制台"菜单项）
+- ✅ **LLM 配置管理** ⭐ 新增
+  - ✅ LLM 配置 CRUD（provider_name, api_url, api_key, model_id）
+  - ✅ 激活/停用 LLM 配置
+  - ✅ 支持 Anthropic 和 OpenAI 兼容 API
+- ✅ **数据同步**
+  - ✅ GitHub / OpenClaw 数据自动同步
 
----
+#### 13. 定制开发
+- ✅ 需求提交表单（`/custom-order`）
+- ✅ 需求列表展示
+- ✅ 后端 CRUD API
 
-## 🔍 需要测试确认的功能
-
-### 高优先级（核心功能）
-
-1. **Agent 上传完整流程**
-   - [ ] 使用开发者账号上传 Agent
-   - [ ] 验证 manifest.json 验证
-   - [ ] 验证文件存储
-   - [ ] 验证数据库记录
-
-2. **评价审核流程**
-   - [ ] 提交评价后状态为 pending
-   - [ ] 管理员批准评价
-   - [ ] 验证评分统计更新
-   - [ ] 验证评价在前端显示
-
-3. **用户中心功能**
-   - [ ] 查看我的下载历史
-   - [ ] 查看我的评价
-   - [ ] 编辑个人信息
-   - [ ] 修改密码
-
-4. **权限控制**
-   - [ ] 普通用户无法访问上传页面
-   - [ ] 未登录用户无法下载
-   - [ ] 未登录用户无法评价
-
-### 中优先级（增强功能）
-
-5. **Agent 搜索/筛选**
-   - [ ] 关键词搜索
-   - [ ] 分类筛选
-   - [ ] 标签筛选
-   - [ ] 价格筛选
-
-6. **Agent 排序**
-   - [ ] 按下载量排序
-   - [ ] 按评分排序
-   - [ ] 按更新时间排序
-
-7. **管理员功能增强**
-   - [ ] 批量审核功能
-   - [ ] 审核历史记录
-   - [ ] 通知系统（审核结果通知开发者）
-   - [ ] 统计报表
-
-### 低优先级（可选功能）
-
-8. **自定义订单**
-   - [ ] 自定义订单页面（`/custom-order`）
-   - [ ] 订单提交
-   - [ ] 订单管理
-
-9. **其他功能**
-   - [ ] Agent 收藏
-   - [ ] Agent 版本管理
-   - [ ] 通知系统
-
----
-
-## 🧪 快速测试步骤
-
-### 1. 基础功能测试（5 分钟）
-
-```bash
-# 1. 访问首页
-打开 http://localhost:5173
-
-# 2. 注册新账号
-点击"注册" -> 填写信息 -> 提交
-
-# 3. 登录
-使用 user1@example.com / password123 登录
-
-# 4. 浏览 Agent
-查看 Agent 列表 -> 点击任意 Agent 查看详情
-
-# 5. 下载 Agent
-点击"下载 Agent"按钮 -> 验证文件下载
-
-# 6. 评价 Agent
-点击"写评价" -> 填写评分和评论 -> 提交
-```
-
-### 2. 开发者功能测试（5 分钟）
-
-```bash
-# 1. 使用开发者账号登录
-使用 dev1@example.com / password123 登录
-
-# 2. 访问上传页面
-访问 http://localhost:5173/upload-agent
-
-# 3. 上传 Agent
-填写 Agent 信息 -> 上传 .zip 文件 -> 提交
-
-# 4. 查看我的 Agent
-访问用户中心 -> 查看"我的 Agent"标签
-```
-
-### 3. 管理员功能测试（10 分钟）⭐ 更新
-
-```bash
-# 1. 使用管理员账号登录
-使用 admin@clewopen.com / password123 登录
-
-# 2. 访问管理控制台
-点击用户菜单 -> "管理控制台"
-访问 http://localhost:5173/admin
-
-# 3. 查看统计数据
-验证显示待审核 Agent 数和待审核评价数
-
-# 4. 测试 Agent 审核
-切换到"Agent 审核"标签
-- 查看待审核 Agent 列表
-- 点击"查看详情"查看 Agent 信息和 manifest
-- 点击"批准"批准 Agent
-- 点击"拒绝"并输入拒绝原因
-
-# 5. 测试评价审核
-切换到"评价审核"标签
-- 查看待审核评价列表
-- 点击"批准"批准评价
-- 点击"拒绝"并输入拒绝原因
-- 点击"删除"删除评价
-
-# 6. 验证权限控制
-退出登录，使用普通用户尝试访问 /admin
-验证被重定向或显示无权限提示
-```
+#### 14. 通知系统
+- ✅ 站内信通知
+- ✅ Header 通知铃铛
+- ✅ 自动通知（审核结果等）
 
 ---
 
 ## 📊 API 端点状态
 
-### ✅ 已实现并测试通过
+### ✅ 公开 API
 
-| 端点 | 方法 | 功能 | 状态 |
-|------|------|------|------|
-| `/api/auth/register` | POST | 用户注册 | ✅ |
-| `/api/auth/login` | POST | 用户登录 | ✅ |
-| `/api/agents` | GET | Agent 列表 | ✅ |
-| `/api/agents/:id` | GET | Agent 详情 | ✅ |
-| `/api/agents/:id/download` | POST | 下载 Agent | ✅ |
-| `/api/agents/:id/rate` | POST | 评价 Agent | ✅ |
-| `/api/agents/:id/reviews` | GET | 获取评价 | ✅ |
-| `/api/agents/:id/stats` | GET | 统计信息 | ✅ |
-| `/api/agents/trending` | GET | 热门 Agent | ✅ |
-| `/api/reviews/:id/approve` | POST | 批准评价 | ✅ |
-| `/api/reviews/:id/reject` | POST | 拒绝评价 | ✅ |
-| `/api/reviews/:id` | DELETE | 删除评价 | ✅ |
-| `/api/reviews` | GET | 所有评价 | ✅ |
-| `/api/agents/admin/all` | GET | 获取所有 Agent（管理员）| ✅ |
-| `/api/agents/admin/pending` | GET | 获取待审核 Agent | ✅ |
-| `/api/agents/admin/:id/approve` | POST | 批准 Agent | ✅ |
-| `/api/agents/admin/:id/reject` | POST | 拒绝 Agent | ✅ |
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/agents` | GET | Agent 列表 |
+| `/api/agents/trending` | GET | 热门 Agent |
+| `/api/agents/platform-stats` | GET | 平台统计 |
+| `/api/agents/:id` | GET | Agent 详情 |
+| `/api/agents/:id/preview` | GET | Agent 包内容预览 |
+| `/api/agents/:id/dependencies` | GET | Agent 依赖 |
+| `/api/agents/:id/reviews` | GET | Agent 评价 |
+| `/api/agents/:id/stats` | GET | 统计信息 |
+| `/api/skills` | GET | Skill 列表 |
+| `/api/skills/trending` | GET | 热门 Skill |
+| `/api/skills/:id` | GET | Skill 详情 |
+| `/api/mcps` | GET | MCP 列表 |
+| `/api/mcps/trending` | GET | 热门 MCP |
+| `/api/mcps/:id` | GET | MCP 详情 |
 
-### 🔄 需要测试
+### ✅ 需要认证的 API
 
-| 端点 | 方法 | 功能 | 状态 |
-|------|------|------|------|
-| `/api/agents/upload` | POST | 上传 Agent | 🔄 |
-| `/api/agents/:id` | PUT | 更新 Agent | 🔄 |
-| `/api/agents/:id` | DELETE | 删除 Agent | 🔄 |
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/agents/:id/download` | POST | 下载 Agent |
+| `/api/agents/:id/rate` | POST | 评价 Agent |
+| `/api/agents/:id/trial` | POST | 试用 Agent |
+| `/api/agents/:id/trial/history` | GET | 试用历史 |
+| `/api/agents/upload` | POST | 上传 Agent |
+| `/api/skills/upload` | POST | 上传 Skill |
+| `/api/mcps/upload` | POST | 上传 MCP |
+| `/api/custom-orders` | POST | 提交定制需求 |
+| `/api/notifications/unread-count` | GET | 未读通知数 |
+
+### ✅ 管理员 API
+
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/api/agents/admin/all` | GET | 所有 Agent |
+| `/api/agents/admin/pending` | GET | 待审核 Agent |
+| `/api/agents/admin/:id/approve` | POST | 批准 Agent |
+| `/api/agents/admin/:id/reject` | POST | 拒绝 Agent |
+| `/api/reviews` | GET | 所有评价 |
+| `/api/reviews/:id/approve` | POST | 批准评价 |
+| `/api/reviews/:id/reject` | POST | 拒绝评价 |
+| `/api/reviews/:id` | DELETE | 删除评价 |
+| `/api/admin/llm-configs` | GET | LLM 配置列表 |
+| `/api/admin/llm-configs` | POST | 新建 LLM 配置 |
+| `/api/admin/llm-configs/:id` | PUT | 更新 LLM 配置 |
+| `/api/admin/llm-configs/:id/activate` | POST | 激活 LLM 配置 |
+| `/api/admin/llm-configs/:id` | DELETE | 删除 LLM 配置 |
+| `/api/admin/sync-*` | GET/POST | 数据同步 |
 
 ---
 
@@ -241,74 +170,22 @@
 ### 已修复
 - ✅ 评价提交错误处理路径不匹配（2026-03-11）
 - ✅ 评价被拒绝后无法重新提交（2026-03-11）
+- ✅ SQL 注入 - getTrending 改用参数化查询
+- ✅ 后端路由顺序 Bug
+- ✅ 前端导航路由 Bug
+- ✅ 下载功能 Blob 处理
+- ✅ CORS 配置
+- ✅ 分类名映射
 
 ### 当前问题
 - ⚠️ 数据库连接显示 Unhealthy（需要启动 Docker 服务）
 
 ---
 
-## 💡 建议测试顺序
-
-1. **第一步：基础功能**（必须）
-   - 注册/登录
-   - Agent 列表和详情
-   - Agent 下载
-   - Agent 评价
-
-2. **第二步：开发者功能**（重要）
-   - Agent 上传
-   - 我的 Agent 管理
-
-3. **第三步：管理员功能**（重要）
-   - 评价审核
-   - Agent 审核
-
-4. **第四步：高级功能**（可选）
-   - 搜索/筛选
-   - 排序
-   - 自定义订单
-
----
-
-## 📝 测试记录
-
-### 测试日期：2026-03-11 ⭐ 更新
-
-#### 已测试功能
-- ✅ 用户登录
-- ✅ Agent 列表展示
-- ✅ Agent 详情展示
-- ✅ Agent 文件下载
-- ✅ 下载统计更新
-- ✅ 评分统计更新
-- ✅ 热门 Agent API
-- ✅ 统计信息 API
-- ✅ 评价提交错误处理
-- ✅ 评价重复提交修复
-- ✅ Agent 上传文件验证
-
-#### 待测试功能
-- 🔄 管理员控制台完整流程
-- 🔄 Agent 审核流程（批准/拒绝）
-- 🔄 评价审核流程（批准/拒绝/删除）
-- 🔄 权限控制验证（管理员页面访问）
-- 🔄 Agent 上传完整流程（包含新的验证规则）
-
----
-
 ## 🚀 下一步行动
 
-1. **立即测试**：
-   - 在浏览器中测试基础功能（注册、登录、浏览、下载、评价）
-   - 测试开发者上传功能
-   - 测试管理员评价审核
-
-2. **需要完善的功能**：
-   - Agent 搜索/筛选功能
-   - 管理员后台界面
-   - Agent 收藏功能
-
-3. **优化建议**：
-   - 添加加载状态提示
-   - 优化移动端显示
-   - 添加错误边界处理
+### Phase 5: 待规划
+- 自动化测试系统
+- API 文档 (Swagger)
+- 国际化
+- 云端 Agent 部署
