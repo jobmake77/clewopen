@@ -3,8 +3,8 @@ import { getMcps, getMcpById, getTrendingMcps } from '../../services/mcpService'
 
 export const fetchMcps = createAsyncThunk(
   'mcp/fetchMcps',
-  async ({ page = 1, pageSize = 20, category, search, sort }) => {
-    const response = await getMcps({ page, pageSize, category, search, sort })
+  async ({ page = 1, pageSize = 20, category, search, sort, sourcePlatform, sourceType }) => {
+    const response = await getMcps({ page, pageSize, category, search, sort, sourcePlatform, sourceType })
     return response.data
   }
 )

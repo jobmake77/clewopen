@@ -4,12 +4,24 @@ import { query } from '../config/database.js';
  * 创建通用资源 Model（Agent/Skill/MCP 共用结构）
  */
 export function createResourceModel(tableName) {
+  const resourceType = tableName === 'skills' ? 'skill' : 'mcp';
+
   return {
-    async findAll({ page = 1, pageSize = 20, category, search, status = 'approved', sort }) {
+    async findAll({ page = 1, pageSize = 20, category, search, status = 'approved', sort, sourceType, sourcePlatform }) {
       let sql = `
-        SELECT a.*, u.username as author_name, u.avatar_url as author_avatar
+        SELECT
+          a.*,
+          u.username as author_name,
+          u.avatar_url as author_avatar,
+          COALESCE(v.visits_count, 0) as visits_count
         FROM ${tableName} a
         LEFT JOIN users u ON a.author_id = u.id
+        LEFT JOIN (
+          SELECT resource_id, COUNT(*)::int AS visits_count
+          FROM resource_visits
+          WHERE resource_type = '${resourceType}'
+          GROUP BY resource_id
+        ) v ON v.resource_id = a.id
         WHERE a.deleted_at IS NULL AND a.status = $1
       `;
       const params = [status];
@@ -27,14 +39,28 @@ export function createResourceModel(tableName) {
         paramIndex++;
       }
 
+      if (sourceType) {
+        sql += ` AND a.source_type = $${paramIndex}`;
+        params.push(sourceType);
+        paramIndex++;
+      }
+
+      if (sourcePlatform) {
+        sql += ` AND a.source_platform = $${paramIndex}`;
+        params.push(sourcePlatform);
+        paramIndex++;
+      }
+
       if (sort === 'downloads') {
         sql += ` ORDER BY a.downloads_count DESC`;
       } else if (sort === 'rating') {
         sql += ` ORDER BY a.rating_average DESC`;
       } else if (sort === 'stars') {
-        sql += ` ORDER BY a.github_stars DESC`;
+        sql += ` ORDER BY a.github_stars DESC NULLS LAST, COALESCE(v.visits_count, 0) DESC`;
+      } else if (sort === 'visits') {
+        sql += ` ORDER BY COALESCE(v.visits_count, 0) DESC, a.github_stars DESC NULLS LAST`;
       } else {
-        sql += ` ORDER BY a.created_at DESC`;
+        sql += ` ORDER BY CASE WHEN a.source_type = 'external' THEN COALESCE(v.visits_count, 0) ELSE a.downloads_count END DESC, a.github_stars DESC NULLS LAST, a.created_at DESC`;
       }
 
       const offset = (page - 1) * pageSize;
@@ -59,6 +85,18 @@ export function createResourceModel(tableName) {
       if (search) {
         countSql += ` AND a.search_vector @@ plainto_tsquery('simple', $${countParamIndex})`;
         countParams.push(search);
+        countParamIndex++;
+      }
+
+      if (sourceType) {
+        countSql += ` AND a.source_type = $${countParamIndex}`;
+        countParams.push(sourceType);
+        countParamIndex++;
+      }
+
+      if (sourcePlatform) {
+        countSql += ` AND a.source_platform = $${countParamIndex}`;
+        countParams.push(sourcePlatform);
       }
 
       const countResult = await query(countSql, countParams);
@@ -75,10 +113,21 @@ export function createResourceModel(tableName) {
 
     async findById(id) {
       const sql = `
-        SELECT a.*, u.username as author_name, u.email as author_email,
-               u.avatar_url as author_avatar, u.bio as author_bio
+        SELECT
+          a.*,
+          u.username as author_name,
+          u.email as author_email,
+          u.avatar_url as author_avatar,
+          u.bio as author_bio,
+          COALESCE(v.visits_count, 0) as visits_count
         FROM ${tableName} a
         LEFT JOIN users u ON a.author_id = u.id
+        LEFT JOIN (
+          SELECT resource_id, COUNT(*)::int AS visits_count
+          FROM resource_visits
+          WHERE resource_type = '${resourceType}'
+          GROUP BY resource_id
+        ) v ON v.resource_id = a.id
         WHERE a.id = $1 AND a.deleted_at IS NULL
       `;
       const result = await query(sql, [id]);
@@ -90,14 +139,19 @@ export function createResourceModel(tableName) {
         INSERT INTO ${tableName} (
           author_id, name, slug, description, version,
           category, tags,
-          package_url, manifest, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          package_url, external_url, manifest, status,
+          source_type, source_platform, source_id, last_synced_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING *
       `;
       const params = [
         data.author_id, data.name, data.slug, data.description, data.version,
-        data.category, data.tags, data.package_url,
+        data.category, data.tags, data.package_url || null, data.external_url || null,
         JSON.stringify(data.manifest), data.status || 'pending',
+        data.source_type || 'uploaded',
+        data.source_platform || 'manual',
+        data.source_id || `uploaded:${data.slug}`,
+        data.last_synced_at || null,
       ];
       const result = await query(sql, params);
       return result.rows[0];
@@ -171,7 +225,7 @@ export function createResourceModel(tableName) {
           COUNT(d.id) as total_download_records,
           MAX(d.downloaded_at) as last_download_at
         FROM ${tableName} a
-        LEFT JOIN downloads d ON a.id = d.resource_id AND d.resource_type = '${tableName === 'skills' ? 'skill' : 'mcp'}'
+        LEFT JOIN downloads d ON a.id = d.resource_id AND d.resource_type = '${resourceType}'
         WHERE a.id = $1 AND a.deleted_at IS NULL
         GROUP BY a.id, a.downloads_count
       `;
@@ -179,24 +233,50 @@ export function createResourceModel(tableName) {
       return result.rows[0] || null;
     },
 
-    async getTrending({ limit = 10 }) {
+    async getTrending({ limit = 10, sourceType, sourcePlatform }) {
       const sql = `
-        SELECT a.*, u.username as author_name, u.avatar_url as author_avatar
+        SELECT
+          a.*,
+          u.username as author_name,
+          u.avatar_url as author_avatar,
+          COALESCE(v.visits_count, 0) as visits_count
         FROM ${tableName} a
         LEFT JOIN users u ON a.author_id = u.id
+        LEFT JOIN (
+          SELECT resource_id, COUNT(*)::int AS visits_count
+          FROM resource_visits
+          WHERE resource_type = '${resourceType}'
+          GROUP BY resource_id
+        ) v ON v.resource_id = a.id
         WHERE a.deleted_at IS NULL AND a.status = 'approved'
-        ORDER BY a.github_stars DESC, a.downloads_count DESC
+          AND ($2::text IS NULL OR a.source_type = $2)
+          AND ($3::text IS NULL OR a.source_platform = $3)
+        ORDER BY
+          CASE WHEN a.source_type = 'external' THEN a.github_stars ELSE 0 END DESC NULLS LAST,
+          CASE WHEN a.source_type = 'external' THEN COALESCE(v.visits_count, 0) ELSE a.downloads_count END DESC,
+          a.rating_average DESC,
+          a.created_at DESC
         LIMIT $1
       `;
-      const result = await query(sql, [limit]);
+      const result = await query(sql, [limit, sourceType || null, sourcePlatform || null]);
       return result.rows;
     },
 
-    async findAllAdmin({ page = 1, pageSize = 20, status, category, search }) {
+    async findAllAdmin({ page = 1, pageSize = 20, status, category, search, sourceType, sourcePlatform }) {
       let sql = `
-        SELECT a.*, u.username as author_name, u.avatar_url as author_avatar
+        SELECT
+          a.*,
+          u.username as author_name,
+          u.avatar_url as author_avatar,
+          COALESCE(v.visits_count, 0) as visits_count
         FROM ${tableName} a
         LEFT JOIN users u ON a.author_id = u.id
+        LEFT JOIN (
+          SELECT resource_id, COUNT(*)::int AS visits_count
+          FROM resource_visits
+          WHERE resource_type = '${resourceType}'
+          GROUP BY resource_id
+        ) v ON v.resource_id = a.id
         WHERE a.deleted_at IS NULL
       `;
       const params = [];
@@ -217,6 +297,18 @@ export function createResourceModel(tableName) {
       if (search) {
         sql += ` AND a.search_vector @@ plainto_tsquery('simple', $${paramIndex})`;
         params.push(search);
+        paramIndex++;
+      }
+
+      if (sourceType) {
+        sql += ` AND a.source_type = $${paramIndex}`;
+        params.push(sourceType);
+        paramIndex++;
+      }
+
+      if (sourcePlatform) {
+        sql += ` AND a.source_platform = $${paramIndex}`;
+        params.push(sourcePlatform);
         paramIndex++;
       }
 
@@ -247,6 +339,18 @@ export function createResourceModel(tableName) {
       if (search) {
         countSql += ` AND a.search_vector @@ plainto_tsquery('simple', $${countParamIndex})`;
         countParams.push(search);
+        countParamIndex++;
+      }
+
+      if (sourceType) {
+        countSql += ` AND a.source_type = $${countParamIndex}`;
+        countParams.push(sourceType);
+        countParamIndex++;
+      }
+
+      if (sourcePlatform) {
+        countSql += ` AND a.source_platform = $${countParamIndex}`;
+        countParams.push(sourcePlatform);
       }
 
       const countResult = await query(countSql, countParams);

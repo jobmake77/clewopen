@@ -88,9 +88,13 @@ export function createResourceUpload(Model, uploadDir, resourceLabel, resourceTy
         version: version || manifest.version,
         author_id: userId,
         package_url: `/uploads/${uploadDir}/${req.file.filename}`,
+        external_url: null,
         tags: tags ? JSON.parse(tags) : (manifest.tags || []),
         status: 'pending',
         manifest,
+        source_type: 'uploaded',
+        source_platform: 'manual',
+        source_id: `uploaded:${(name || manifest.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`,
         slug: (name || manifest.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now(),
       }
 

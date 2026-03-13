@@ -124,6 +124,7 @@ CREATE TABLE skills (
   category VARCHAR(100) NOT NULL,
   tags TEXT[],
   package_url TEXT,
+  external_url TEXT,
   manifest JSONB,
   github_stars INTEGER DEFAULT 0,
   github_url TEXT,
@@ -132,7 +133,10 @@ CREATE TABLE skills (
   rating_average DECIMAL(3, 2) DEFAULT 0,
   reviews_count INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'pending',
-  source VARCHAR(50) DEFAULT 'upload', -- 'upload', 'github', 'openclaw'
+  source_type VARCHAR(20) DEFAULT 'uploaded', -- 'uploaded', 'external'
+  source_platform VARCHAR(30),                -- 'manual', 'github', 'openclaw'
+  source_id VARCHAR(255),
+  last_synced_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP
@@ -152,6 +156,7 @@ CREATE TABLE mcps (
   category VARCHAR(100) NOT NULL,
   tags TEXT[],
   package_url TEXT,
+  external_url TEXT,
   manifest JSONB,
   github_stars INTEGER DEFAULT 0,
   github_url TEXT,
@@ -160,10 +165,35 @@ CREATE TABLE mcps (
   rating_average DECIMAL(3, 2) DEFAULT 0,
   reviews_count INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'pending',
-  source VARCHAR(50) DEFAULT 'upload',
+  source_type VARCHAR(20) DEFAULT 'uploaded',
+  source_platform VARCHAR(30),
+  source_id VARCHAR(255),
+  last_synced_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP
+);
+```
+
+### Skill / MCP 资源语义
+
+- `uploaded`：平台托管资源，`package_url` 指向本地 zip 包
+- `external`：平台聚合资源，`external_url` 指向 GitHub/OpenClaw 等外部链接
+- `source_platform`：记录来源平台，用于前端筛选和后台统计
+- `source_id`：记录外部资源稳定标识，用于同步去重
+
+### 4. resource_visits（外部资源访问记录）
+
+```sql
+CREATE TABLE resource_visits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  resource_id UUID NOT NULL,
+  resource_type VARCHAR(20) NOT NULL, -- 'skill', 'mcp'
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  source_type VARCHAR(20) NOT NULL,   -- 'uploaded', 'external'
+  ip_address INET,
+  user_agent TEXT,
+  visited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -368,6 +398,7 @@ FOR EACH ROW EXECUTE FUNCTION update_agent_downloads();
 | `006_add_github_fields.sql` | GitHub 同步字段 |
 | `007_remove_pricing_and_orders.sql` | 删除 orders 表和 price 列 |
 | `008_create_trial_and_llm_config.sql` | Agent 试用和 LLM 配置表 |
+| `009_refactor_skill_mcp_source_model.sql` | Skill/MCP 外部目录模型与访问统计 |
 
 ## 性能优化建议
 

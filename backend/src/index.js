@@ -13,11 +13,14 @@ import authRoutes from '../api/auth/routes.js'
 import reviewRoutes from '../api/reviews/routes.js'
 import customOrderRoutes from '../api/custom-orders/routes.js'
 import notificationRoutes from '../api/notifications/routes.js'
+import trialSessionRoutes from '../api/trial-sessions/routes.js'
 import adminSyncRoutes from '../api/admin/syncRoutes.js'
 import adminLlmRoutes from '../api/admin/llmConfigRoutes.js'
 import { errorHandler } from '../middleware/errorHandler.js'
 import { logger } from '../config/logger.js'
+import { bootstrapActiveLlmConfigFromEnv } from '../services/llmConfigBootstrapService.js'
 import { startScheduler, stopScheduler } from '../services/syncService.js'
+import { startTrialCleanupWorker, stopTrialCleanupWorker } from '../runtime/trial/cleanupWorker.js'
 
 dotenv.config()
 
@@ -86,6 +89,7 @@ app.use('/api/users', userRoutes)
 app.use('/api/reviews', rateLimiter, reviewRoutes)
 app.use('/api/custom-orders', customOrderRoutes)
 app.use('/api/notifications', notificationRoutes)
+app.use('/api/trial-sessions', trialSessionRoutes)
 app.use('/api/admin', adminSyncRoutes)
 app.use('/api/admin', adminLlmRoutes)
 
@@ -97,16 +101,32 @@ app.get('/health', (req, res) => {
 // Error handling
 app.use(errorHandler)
 
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`)
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-  startScheduler()
-})
+let server = null
+
+async function startServer() {
+  try {
+    await bootstrapActiveLlmConfigFromEnv()
+  } catch (error) {
+    logger.warn(`Failed to bootstrap llm config from env: ${error.message}`)
+  }
+
+  server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT}`)
+    console.log(`🚀 Server running on http://localhost:${PORT}`)
+    startScheduler()
+    startTrialCleanupWorker()
+  })
+}
 
 // 优雅退出
 const gracefulShutdown = (signal) => {
   logger.info(`${signal} received, shutting down gracefully...`)
   stopScheduler()
+  stopTrialCleanupWorker()
+  if (!server) {
+    process.exit(0)
+    return
+  }
   server.close(() => {
     logger.info('Server closed')
     process.exit(0)
@@ -115,5 +135,7 @@ const gracefulShutdown = (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+
+startServer()
 
 export default app

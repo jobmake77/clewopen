@@ -181,6 +181,23 @@ function DataSync() {
         </Col>
       </Row>
 
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col span={12}>
+          <Card title="Skill 来源拆分" size="small">
+            <p>外部资源: {status?.skillBreakdown?.external ?? 0}</p>
+            <p>平台上传: {status?.skillBreakdown?.uploaded ?? 0}</p>
+            <p>GitHub: {status?.skillBreakdown?.github ?? 0}</p>
+            <p>OpenClaw: {status?.skillBreakdown?.openclaw ?? 0}</p>
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card title="MCP 来源拆分" size="small">
+            <p>外部资源: {status?.mcpBreakdown?.external ?? 0}</p>
+            <p>平台上传: {status?.mcpBreakdown?.uploaded ?? 0}</p>
+          </Card>
+        </Col>
+      </Row>
+
       {/* 操作区 */}
       <Card style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -196,6 +213,11 @@ function DataSync() {
           {status?.nextSyncTime && (
             <span style={{ color: '#999' }}>
               下次自动同步: {dayjs(status.nextSyncTime).format('YYYY-MM-DD HH:mm:ss')}
+            </span>
+          )}
+          {history[0]?.openclawIsPartial && (
+            <span style={{ color: '#999' }}>
+              本轮 OpenClaw 为分批同步: {history[0]?.openclawProcessedRange?.start}-{history[0]?.openclawProcessedRange?.end} / {history[0]?.openclawProcessedRange?.totalUsers}
             </span>
           )}
           <Button onClick={loadData} style={{ marginLeft: 'auto' }}>

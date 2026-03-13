@@ -25,6 +25,7 @@ router.post('/upload', authenticate, authorize('developer', 'admin'), upload.sin
 
 // 动态路由
 router.get('/:id', ctrl.getItemById)
+router.post('/:id/visit', ctrl.visitExternalItem)
 router.get('/:id/reviews', ctrl.getItemReviews)
 router.post('/:id/download', authenticate, ctrl.downloadItem)
 router.post('/:id/rate', authenticate, ctrl.rateItem)

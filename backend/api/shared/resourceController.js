@@ -1,6 +1,7 @@
 import DownloadModel from '../../models/Download.js';
 import ReviewModel from '../../models/Review.js';
 import NotificationModel from '../../models/Notification.js';
+import ResourceVisitModel from '../../models/ResourceVisit.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -17,13 +18,15 @@ const __dirname = path.dirname(__filename);
 export function createResourceController(Model, resourceType, resourceLabel) {
   const getItems = async (req, res, next) => {
     try {
-      const { page = 1, pageSize = 20, category, search, sort } = req.query;
+      const { page = 1, pageSize = 20, category, search, sort, sourceType, sourcePlatform } = req.query;
       const result = await Model.findAll({
         page: parseInt(page),
         pageSize: parseInt(pageSize),
         category,
         search,
         sort,
+        sourceType,
+        sourcePlatform,
       });
       res.json({ success: true, data: result });
     } catch (error) {
@@ -51,6 +54,18 @@ export function createResourceController(Model, resourceType, resourceLabel) {
 
       if (!item) {
         return res.status(404).json({ success: false, error: { message: `${resourceLabel} not found` } });
+      }
+
+      if (item.source_type === 'external') {
+        return res.status(409).json({
+          success: false,
+          error: {
+            message: `${resourceLabel} 为外部资源，请前往原始链接访问`,
+            code: 'EXTERNAL_RESOURCE',
+            external_url: item.external_url,
+            source_platform: item.source_platform,
+          },
+        });
       }
 
       const backendRoot = path.resolve(__dirname, '../../..');
@@ -133,11 +148,48 @@ export function createResourceController(Model, resourceType, resourceLabel) {
 
   const getTrendingItems = async (req, res, next) => {
     try {
-      const { limit = 10 } = req.query;
+      const { limit = 10, sourceType, sourcePlatform } = req.query;
       const items = await Model.getTrending({
         limit: parseInt(limit),
+        sourceType,
+        sourcePlatform,
       });
       res.json({ success: true, data: items });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  const visitExternalItem = async (req, res, next) => {
+    try {
+      const item = await Model.findById(req.params.id);
+      if (!item) {
+        return res.status(404).json({ success: false, error: { message: `${resourceLabel} not found` } });
+      }
+
+      if (item.source_type !== 'external' || !item.external_url) {
+        return res.status(400).json({
+          success: false,
+          error: { message: `${resourceLabel} 不是外部资源` },
+        });
+      }
+
+      await ResourceVisitModel.create({
+        resource_id: item.id,
+        resource_type: resourceType,
+        user_id: req.user?.id || null,
+        source_type: item.source_type,
+        ip_address: req.ip,
+        user_agent: req.get('user-agent'),
+      });
+
+      res.json({
+        success: true,
+        data: {
+          external_url: item.external_url,
+          source_platform: item.source_platform,
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -146,13 +198,15 @@ export function createResourceController(Model, resourceType, resourceLabel) {
   // Admin functions
   const getAllAdmin = async (req, res, next) => {
     try {
-      const { page = 1, pageSize = 20, status, category, search } = req.query;
+      const { page = 1, pageSize = 20, status, category, search, sourceType, sourcePlatform } = req.query;
       const result = await Model.findAllAdmin({
         page: parseInt(page),
         pageSize: parseInt(pageSize),
         status,
         category,
         search,
+        sourceType,
+        sourcePlatform,
       });
       res.json({ success: true, data: result });
     } catch (error) {
@@ -277,6 +331,7 @@ export function createResourceController(Model, resourceType, resourceLabel) {
     rateItem,
     getItemReviews,
     getTrendingItems,
+    visitExternalItem,
     getAllAdmin,
     getPendingItems,
     approveItem,

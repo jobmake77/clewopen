@@ -13,9 +13,25 @@ router.get('/sync-status', async (req, res) => {
   try {
     const status = getSyncStatus()
 
-    const [mcpCount, skillCount] = await Promise.all([
+    const [mcpCount, skillCount, mcpBreakdown, skillBreakdown] = await Promise.all([
       query('SELECT COUNT(*) FROM mcps WHERE deleted_at IS NULL'),
       query('SELECT COUNT(*) FROM skills WHERE deleted_at IS NULL'),
+      query(`
+        SELECT
+          COUNT(*) FILTER (WHERE source_type = 'external') AS external_count,
+          COUNT(*) FILTER (WHERE source_type = 'uploaded') AS uploaded_count
+        FROM mcps
+        WHERE deleted_at IS NULL
+      `),
+      query(`
+        SELECT
+          COUNT(*) FILTER (WHERE source_type = 'external') AS external_count,
+          COUNT(*) FILTER (WHERE source_type = 'uploaded') AS uploaded_count,
+          COUNT(*) FILTER (WHERE source_platform = 'github') AS github_count,
+          COUNT(*) FILTER (WHERE source_platform = 'openclaw') AS openclaw_count
+        FROM skills
+        WHERE deleted_at IS NULL
+      `),
     ])
 
     res.json({
@@ -24,6 +40,16 @@ router.get('/sync-status', async (req, res) => {
         ...status,
         totalMcps: parseInt(mcpCount.rows[0].count, 10),
         totalSkills: parseInt(skillCount.rows[0].count, 10),
+        mcpBreakdown: {
+          external: parseInt(mcpBreakdown.rows[0].external_count || '0', 10),
+          uploaded: parseInt(mcpBreakdown.rows[0].uploaded_count || '0', 10),
+        },
+        skillBreakdown: {
+          external: parseInt(skillBreakdown.rows[0].external_count || '0', 10),
+          uploaded: parseInt(skillBreakdown.rows[0].uploaded_count || '0', 10),
+          github: parseInt(skillBreakdown.rows[0].github_count || '0', 10),
+          openclaw: parseInt(skillBreakdown.rows[0].openclaw_count || '0', 10),
+        },
       },
     })
   } catch (err) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { Row, Col, Input, Select, Pagination, Spin, Alert } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import { fetchMcps } from '../../store/slices/mcpSlice'
@@ -14,12 +15,14 @@ const sortOptions = [
 
 function McpMarket() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { list, total, loading, error } = useSelector((state) => state.mcp)
 
   const [page, setPage] = useState(1)
   const [pageSize] = useState(20)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('default')
+  const [sourcePlatform, setSourcePlatform] = useState('all')
 
   useEffect(() => {
     dispatch(fetchMcps({
@@ -27,8 +30,9 @@ function McpMarket() {
       pageSize,
       search: search || undefined,
       sort: sort === 'default' ? undefined : sort,
+      sourcePlatform: sourcePlatform === 'all' ? undefined : sourcePlatform,
     }))
-  }, [dispatch, page, pageSize, search, sort])
+  }, [dispatch, page, pageSize, search, sort, sourcePlatform])
 
   const handleSearch = (value) => {
     setSearch(value)
@@ -37,6 +41,11 @@ function McpMarket() {
 
   const handleSortChange = (value) => {
     setSort(value)
+    setPage(1)
+  }
+
+  const handleSourcePlatformChange = (value) => {
+    setSourcePlatform(value)
     setPage(1)
   }
 
@@ -59,6 +68,17 @@ function McpMarket() {
           size="large"
           onSearch={handleSearch}
           style={{ flex: 1 }}
+        />
+        <Select
+          value={sourcePlatform}
+          onChange={handleSourcePlatformChange}
+          style={{ width: 140, flexShrink: 0 }}
+          size="large"
+          options={[
+            { label: '全部来源', value: 'all' },
+            { label: 'GitHub', value: 'github' },
+            { label: '平台上传', value: 'manual' },
+          ]}
         />
         <Select
           value={sort}
@@ -88,7 +108,7 @@ function McpMarket() {
               <ResourceCard
                 item={item}
                 resourceType="mcp"
-                onClick={(item) => item.package_url && window.open(item.package_url, '_blank')}
+                onClick={(item) => navigate(`/mcps/${item.id}`)}
               />
             </Col>
           ))}

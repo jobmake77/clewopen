@@ -3,6 +3,7 @@ import { getAgents, getAgentById, downloadAgent, rateAgent, getAgentReviews, get
 import { uploadAgent, updateAgent, deleteAgent, upload } from './upload.js'
 import { getAgentPreview } from './preview.js'
 import { trialAgent, getTrialHistory } from './trial.js'
+import { createSessionForAgent } from '../trial-sessions/controller.js'
 import { authenticate, authorize } from '../../middleware/auth.js'
 import { auditLog } from '../../middleware/auditLog.js'
 
@@ -29,6 +30,7 @@ router.get('/:id/preview', getAgentPreview)
 router.get('/:id/dependencies', getAgentDependencies)
 router.get('/:id/trial/history', authenticate, getTrialHistory)
 router.post('/:id/trial', authenticate, trialAgent)
+router.post('/:id/trial-sessions', authenticate, createSessionForAgent)
 router.get('/:id/reviews', getAgentReviews)
 router.get('/:id/stats', getAgentStats)
 router.post('/:id/download', authenticate, downloadAgent)

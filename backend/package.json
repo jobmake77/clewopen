@@ -10,7 +10,9 @@
     "test": "jest",
     "db:migrate": "node scripts/migrate.js migrate",
     "db:reset": "node scripts/migrate.js reset",
-    "db:seed": "node scripts/migrate.js migrate"
+    "db:seed": "node scripts/migrate.js migrate",
+    "trial:image:build": "sh runtime/trial/docker/build-trial-base-image.sh",
+    "trial:smoke": "node scripts/trialSandboxSmokeTest.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

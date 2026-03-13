@@ -3,8 +3,8 @@ import { getSkills, getSkillById, getTrendingSkills } from '../../services/skill
 
 export const fetchSkills = createAsyncThunk(
   'skill/fetchSkills',
-  async ({ page = 1, pageSize = 20, category, search, sort }) => {
-    const response = await getSkills({ page, pageSize, category, search, sort })
+  async ({ page = 1, pageSize = 20, category, search, sort, sourcePlatform, sourceType }) => {
+    const response = await getSkills({ page, pageSize, category, search, sort, sourcePlatform, sourceType })
     return response.data
   }
 )

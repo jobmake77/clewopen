@@ -172,6 +172,7 @@ async function upsertFromGitHub(repos, tableName) {
     const githubUrl = repo.html_url
     const authorAvatarUrl = repo.owner?.avatar_url || null
     const authorLogin = repo.owner?.login || 'unknown'
+    const sourceId = `github:${repo.full_name}`
 
     try {
       const authorId = await ensureUser(authorLogin, authorAvatarUrl)
@@ -179,24 +180,43 @@ async function upsertFromGitHub(repos, tableName) {
       const result = await query(
         `INSERT INTO ${tableName} (author_id, name, slug, description, version, category, tags,
           package_url, manifest, status, published_at,
-          github_stars, github_url, author_avatar_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          github_stars, github_url, author_avatar_url,
+          source_type, external_url, source_platform, source_id, last_synced_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          ON CONFLICT (slug) DO UPDATE SET
            description = EXCLUDED.description,
            github_stars = EXCLUDED.github_stars,
            github_url = EXCLUDED.github_url,
            author_avatar_url = EXCLUDED.author_avatar_url,
-           package_url = EXCLUDED.package_url,
            tags = EXCLUDED.tags,
            manifest = EXCLUDED.manifest,
+           external_url = EXCLUDED.external_url,
+           source_platform = EXCLUDED.source_platform,
+           source_id = EXCLUDED.source_id,
+           last_synced_at = EXCLUDED.last_synced_at,
            updated_at = NOW()
+         WHERE ${tableName}.source_type = 'external'
          RETURNING (xmax = 0) AS is_insert`,
         [
-          authorId, name, slug, description, '1.0.0', category, tags,
-          githubUrl,
+          authorId,
+          name,
+          slug,
+          description,
+          '1.0.0',
+          category,
+          tags,
+          null,
           JSON.stringify({ name, description, source: 'github', full_name: repo.full_name, language: repo.language }),
-          'approved', repo.created_at || new Date().toISOString(),
-          githubStars, githubUrl, authorAvatarUrl,
+          'approved',
+          repo.created_at || new Date().toISOString(),
+          githubStars,
+          githubUrl,
+          authorAvatarUrl,
+          'external',
+          githubUrl,
+          'github',
+          sourceId,
+          new Date().toISOString(),
         ]
       )
       if (result.rows.length > 0) {
@@ -278,7 +298,12 @@ async function fetchOpenclawSkills() {
     openclawUserList = await fetchOpenclawUserDirs()
     if (openclawUserList.length === 0) {
       logger.warn('Openclaw: no user directories found')
-      return skills
+      return {
+        skills,
+        processedRange: { start: 0, end: 0, totalUsers: 0 },
+        isPartial: false,
+        remainingUsers: 0,
+      }
     }
     logger.info(`Openclaw: found ${openclawUserList.length} user directories`)
   }
@@ -289,6 +314,7 @@ async function fetchOpenclawSkills() {
     openclawUserOffset = 0 // wrap around for next cycle
   }
 
+  const batchStart = openclawUserOffset
   const batchEnd = Math.min(openclawUserOffset + OPENCLAW_BATCH_SIZE, totalUsers)
   const userBatch = openclawUserList.slice(openclawUserOffset, batchEnd)
   logger.info(`Openclaw: processing users ${openclawUserOffset + 1}-${batchEnd} of ${totalUsers}`)
@@ -337,7 +363,16 @@ async function fetchOpenclawSkills() {
   openclawUserOffset = batchEnd >= totalUsers ? 0 : batchEnd
   logger.info(`Openclaw: fetched ${skills.length} skills, next offset: ${openclawUserOffset}`)
 
-  return skills
+  return {
+    skills,
+    processedRange: {
+      start: userBatch.length > 0 ? batchStart + 1 : 0,
+      end: batchEnd,
+      totalUsers,
+    },
+    isPartial: batchEnd < totalUsers,
+    remainingUsers: Math.max(0, totalUsers - batchEnd),
+  }
 }
 
 async function upsertOpenclawSkills(skills) {
@@ -348,6 +383,7 @@ async function upsertOpenclawSkills(skills) {
     const slug = `openclaw-${skill.owner}-${skill.slug}`
     const githubUrl = `https://github.com/openclaw/skills/tree/main/skills/${skill.owner}/${skill.slug}`
     const authorAvatarUrl = `https://github.com/${skill.owner}.png`
+    const sourceId = `openclaw:${skill.owner}/${skill.slug}`
 
     // Classify using a synthetic repo-like object
     const category = classifyRepo({
@@ -362,8 +398,9 @@ async function upsertOpenclawSkills(skills) {
       const result = await query(
         `INSERT INTO skills (author_id, name, slug, description, version, category, tags,
           package_url, manifest, status, published_at,
-          github_stars, github_url, author_avatar_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          github_stars, github_url, author_avatar_url,
+          source_type, external_url, source_platform, source_id, last_synced_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          ON CONFLICT (slug) DO UPDATE SET
            description = EXCLUDED.description,
            github_stars = EXCLUDED.github_stars,
@@ -372,14 +409,33 @@ async function upsertOpenclawSkills(skills) {
            tags = EXCLUDED.tags,
            manifest = EXCLUDED.manifest,
            version = EXCLUDED.version,
+           external_url = EXCLUDED.external_url,
+           source_platform = EXCLUDED.source_platform,
+           source_id = EXCLUDED.source_id,
+           last_synced_at = EXCLUDED.last_synced_at,
            updated_at = NOW()
+         WHERE skills.source_type = 'external'
          RETURNING (xmax = 0) AS is_insert`,
         [
-          authorId, skill.displayName, slug, skill.description, skill.version, category, skill.tags,
-          githubUrl,
+          authorId,
+          skill.displayName,
+          slug,
+          skill.description,
+          skill.version,
+          category,
+          skill.tags,
+          null,
           JSON.stringify({ name: skill.displayName, description: skill.description, source: 'openclaw', owner: skill.owner, slug: skill.slug }),
-          'approved', skill.publishedAt || new Date().toISOString(),
-          OPENCLAW_REPO_STARS, githubUrl, authorAvatarUrl,
+          'approved',
+          skill.publishedAt || new Date().toISOString(),
+          OPENCLAW_REPO_STARS,
+          githubUrl,
+          authorAvatarUrl,
+          'external',
+          githubUrl,
+          'openclaw',
+          sourceId,
+          new Date().toISOString(),
         ]
       )
       if (result.rows.length > 0) {
@@ -414,8 +470,8 @@ export async function runSync() {
     const skillResult = await upsertFromGitHub(skillRepos, 'skills')
 
     // Skill — from openclaw/skills
-    const openclawSkills = await fetchOpenclawSkills()
-    const openclawResult = await upsertOpenclawSkills(openclawSkills)
+    const openclawSync = await fetchOpenclawSkills()
+    const openclawResult = await upsertOpenclawSkills(openclawSync.skills)
 
     const duration = Date.now() - startTime
     lastSyncTime = new Date()
@@ -428,9 +484,13 @@ export async function runSync() {
       skillsFetched: skillRepos.length,
       skillsInserted: skillResult.inserted,
       skillsUpdated: skillResult.updated,
-      openclawFetched: openclawSkills.length,
+      openclawFetched: openclawSync.skills.length,
       openclawInserted: openclawResult.inserted,
       openclawUpdated: openclawResult.updated,
+      syncMode: 'batch',
+      openclawProcessedRange: openclawSync.processedRange,
+      openclawIsPartial: openclawSync.isPartial,
+      openclawRemainingUsers: openclawSync.remainingUsers,
       duration,
       endTime: new Date().toISOString(),
     })

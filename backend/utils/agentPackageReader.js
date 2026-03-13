@@ -14,14 +14,18 @@ const FILE_MAP = {
   readme: ['README.md'],
 }
 
+export function resolveAgentPackagePath(packageUrl) {
+  const backendRoot = path.resolve(__dirname, '..')
+  return path.join(backendRoot, packageUrl)
+}
+
 /**
  * 从 Agent 包 URL 中提取配置文件内容
  * @param {string} packageUrl - 相对路径，如 /uploads/agents/xxx.zip
  * @returns {{ identity, rules, memory, tools, readme }} 各文件的文本内容（不存在则为 null）
  */
 export async function extractAgentFiles(packageUrl) {
-  const backendRoot = path.resolve(__dirname, '..')
-  const filePath = path.join(backendRoot, packageUrl)
+  const filePath = resolveAgentPackagePath(packageUrl)
 
   await fs.access(filePath) // throws if file doesn't exist
 

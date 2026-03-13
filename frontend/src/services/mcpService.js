@@ -8,6 +8,10 @@ export const getMcpById = (id) => {
   return api.get(`/mcps/${id}`)
 }
 
+export const visitMcp = (id) => {
+  return api.post(`/mcps/${id}/visit`)
+}
+
 export const downloadMcp = async (id) => {
   return api.post(`/mcps/${id}/download`, {}, { responseType: 'blob' })
 }

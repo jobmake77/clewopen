@@ -22,6 +22,7 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
           renderItem={(item, index) => {
             const rank = index + 1
             const rankColor = rankColors[rank] || '#999'
+            const isUploadedResource = item.source_type === 'uploaded'
 
             return (
               <List.Item
@@ -85,7 +86,7 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
                     >
                       {item.name}
                     </span>
-                    {isExternal && (
+                    {isExternal && !isUploadedResource && (
                       <LinkOutlined style={{ color: '#888', fontSize: 12, flexShrink: 0 }} />
                     )}
                   </div>
@@ -102,10 +103,16 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
 
                   {/* 星数（Skill/MCP）或 评分（Agent） */}
                   {isExternal ? (
-                    <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
-                      <GithubOutlined style={{ marginRight: 2 }} />
-                      <StarFilled /> {item.github_stars || 0}
-                    </span>
+                    isUploadedResource ? (
+                      <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
+                        <StarFilled /> {parseFloat(item.rating_average || 0).toFixed(1)}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
+                        <GithubOutlined style={{ marginRight: 2 }} />
+                        <StarFilled /> {item.github_stars || 0}
+                      </span>
+                    )
                   ) : (
                     <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
                       <StarFilled /> {parseFloat(item.rating_average || 0).toFixed(1)}

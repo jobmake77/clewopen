@@ -48,7 +48,8 @@ OpenCLEW 是一个开源的 AI Agent 能力平台，旨在：
 
 - Skill 库 — Agent 可复用的技能组件
 - MCP 库 — Model Context Protocol 服务
-- GitHub 数据自动同步
+- GitHub / OpenClaw 外部资源自动同步
+- 平台上传资源与外部资源分开建模
 - Agent 依赖声明与关联展示
 
 ### 定制开发
@@ -240,6 +241,8 @@ openclewopen/
 - ✅ 移除所有付费/订单系统（开源项目不涉及付费）
 - ✅ Agent 试用沙盒（LLM 驱动，管理员配置 API）
 - ✅ Admin LLM 配置管理页面
+- ✅ Skill / MCP 外部目录模型（external/uploaded）
+- ✅ Skill / MCP 详情页 + 外链访问统计
 
 ### Phase 5: 待规划
 - 自动化测试、API 文档、国际化

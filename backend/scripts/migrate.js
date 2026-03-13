@@ -111,9 +111,18 @@ const resetDatabase = async () => {
     console.log('Resetting database...\n');
 
     const dropTablesQuery = `
+      DROP TABLE IF EXISTS resource_visits CASCADE;
+      DROP TABLE IF EXISTS trial_session_messages CASCADE;
+      DROP TABLE IF EXISTS trial_sessions CASCADE;
+      DROP TABLE IF EXISTS agent_trials CASCADE;
+      DROP TABLE IF EXISTS llm_configs CASCADE;
+      DROP TABLE IF EXISTS notifications CASCADE;
+      DROP TABLE IF EXISTS custom_orders CASCADE;
       DROP TABLE IF EXISTS downloads CASCADE;
       DROP TABLE IF EXISTS reviews CASCADE;
       DROP TABLE IF EXISTS orders CASCADE;
+      DROP TABLE IF EXISTS mcps CASCADE;
+      DROP TABLE IF EXISTS skills CASCADE;
       DROP TABLE IF EXISTS agents CASCADE;
       DROP TABLE IF EXISTS categories CASCADE;
       DROP TABLE IF EXISTS users CASCADE;

@@ -4,6 +4,8 @@ import MarketPlace from './pages/MarketPlace'
 import AgentDetail from './pages/AgentDetail'
 import SkillMarket from './pages/SkillMarket'
 import McpMarket from './pages/McpMarket'
+import SkillDetail from './pages/SkillDetail'
+import McpDetail from './pages/McpDetail'
 import CustomOrder from './pages/CustomOrder'
 import UserCenter from './pages/UserCenter'
 import UploadAgent from './pages/UploadAgent'
@@ -54,7 +56,9 @@ function App() {
                   <Route path="/" element={<MarketPlace />} />
                   <Route path="/agent/:id" element={<AgentDetail />} />
                   <Route path="/skills" element={<SkillMarket />} />
+                  <Route path="/skills/:id" element={<SkillDetail />} />
                   <Route path="/mcps" element={<McpMarket />} />
+                  <Route path="/mcps/:id" element={<McpDetail />} />
                   <Route path="/custom-order" element={<CustomOrder />} />
                   <Route
                     path="/user"

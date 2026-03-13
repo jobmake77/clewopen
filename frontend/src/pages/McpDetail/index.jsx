@@ -1,12 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, message } from 'antd'
-import { DownloadOutlined, StarOutlined } from '@ant-design/icons'
+import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, message, Space } from 'antd'
+import { DownloadOutlined, StarOutlined, LinkOutlined, GithubOutlined, CopyOutlined } from '@ant-design/icons'
 import { fetchMcpDetail } from '../../store/slices/mcpSlice'
 import api from '../../services/api'
+import { visitMcp } from '../../services/mcpService'
 
 const { TextArea } = Input
+
+const sourceLabelMap = {
+  github: 'GitHub',
+  manual: '平台上传',
+  external: '外部来源',
+}
 
 function McpDetail() {
   const { id } = useParams()
@@ -19,6 +26,7 @@ function McpDetail() {
   const [rateModalVisible, setRateModalVisible] = useState(false)
   const [submittingRate, setSubmittingRate] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [openingSource, setOpeningSource] = useState(false)
   const [form] = Form.useForm()
 
   useEffect(() => {
@@ -26,11 +34,16 @@ function McpDetail() {
     loadReviews()
   }, [dispatch, id])
 
+  const tags = useMemo(() => {
+    if (!current?.tags) return []
+    return Array.isArray(current.tags) ? current.tags : String(current.tags).split(',').map(tag => tag.trim()).filter(Boolean)
+  }, [current])
+
   const loadReviews = async () => {
     setLoadingReviews(true)
     try {
       const response = await api.get(`/mcps/${id}/reviews`)
-      if (response.success) setReviews(response.data)
+      if (response.success) setReviews(response.data.reviews || [])
     } catch (error) {
       console.error('Failed to load reviews:', error)
     } finally {
@@ -58,9 +71,35 @@ function McpDetail() {
       message.success('下载成功')
       dispatch(fetchMcpDetail(id))
     } catch (error) {
-      message.error(error.response?.data?.error || '下载失败')
+      message.error(error.response?.data?.error?.message || error.response?.data?.error || '下载失败')
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const handleVisitSource = async () => {
+    if (!current?.external_url) return
+    setOpeningSource(true)
+    try {
+      const response = await visitMcp(id)
+      const targetUrl = response.data?.external_url || current.external_url
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+      message.success('已打开外部资源')
+      dispatch(fetchMcpDetail(id))
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '打开外部资源失败')
+    } finally {
+      setOpeningSource(false)
+    }
+  }
+
+  const handleCopyLink = async () => {
+    if (!current?.external_url) return
+    try {
+      await navigator.clipboard.writeText(current.external_url)
+      message.success('链接已复制')
+    } catch {
+      message.error('复制失败')
     }
   }
 
@@ -78,7 +117,7 @@ function McpDetail() {
     try {
       const response = await api.post(`/mcps/${id}/rate`, values)
       if (response.success) {
-        message.success('评价成功')
+        message.success('评价已提交，待审核后显示')
         setRateModalVisible(false)
         form.resetFields()
         loadReviews()
@@ -95,6 +134,9 @@ function McpDetail() {
     return <div style={{ textAlign: 'center', padding: 100 }}><Spin size="large" /></div>
   }
 
+  const isExternal = current.source_type === 'external'
+  const sourceLabel = sourceLabelMap[current.source_platform] || (isExternal ? '外部资源' : '平台上传')
+
   const tabItems = [
     {
       key: 'overview',
@@ -103,10 +145,22 @@ function McpDetail() {
         <div>
           <h3>功能描述</h3>
           <p>{current.description}</p>
-          <h3>使用方式</h3>
-          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4 }}>
-            {`# 在 Agent 的 manifest.json 中声明依赖\n"dependencies": {\n  "mcps": ["${current.name}"]\n}`}
+
+          <h3>接入方式</h3>
+          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4, whiteSpace: 'pre-wrap' }}>
+{`# 在 Agent 的 manifest.json 中声明依赖
+"dependencies": {
+  "mcps": ["${current.slug || current.name}"]
+}`}
           </pre>
+
+          {isExternal && current.external_url && (
+            <>
+              <h3>资源来源</h3>
+              <p>这是一个由平台聚合展示的外部 MCP，实际内容托管在 {sourceLabel}。</p>
+              <p><a href={current.external_url} target="_blank" rel="noreferrer">{current.external_url}</a></p>
+            </>
+          )}
         </div>
       ),
     },
@@ -137,13 +191,22 @@ function McpDetail() {
         <Col span={16}>
           <Card>
             <div style={{ marginBottom: 24 }}>
+              <Space wrap size={[8, 8]} style={{ marginBottom: 16 }}>
+                <Tag color={isExternal ? 'geekblue' : 'blue'}>{sourceLabel}</Tag>
+                {current.category && <Tag color="magenta">{current.category}</Tag>}
+                {tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
+              </Space>
               <h1>{current.name}</h1>
-              <div style={{ marginBottom: 16 }}>
-                {current.tags?.map((tag) => <Tag key={tag} color="magenta">{tag}</Tag>)}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-                <span><Rate disabled defaultValue={current.rating_average || 0} /> ({current.reviews_count || 0} 评价)</span>
-                <span><DownloadOutlined /> {current.downloads_count || 0} 下载</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+                <span><Rate disabled value={Number(current.rating_average || 0)} /> ({current.reviews_count || 0} 评价)</span>
+                {isExternal ? (
+                  <>
+                    <span><GithubOutlined /> {current.github_stars || 0} Stars</span>
+                    <span><LinkOutlined /> {current.visits_count || 0} 次访问</span>
+                  </>
+                ) : (
+                  <span><DownloadOutlined /> {current.downloads_count || 0} 下载</span>
+                )}
               </div>
             </div>
             <Divider />
@@ -157,9 +220,22 @@ function McpDetail() {
                 M
               </div>
             </div>
-            <Button type="primary" size="large" block icon={<DownloadOutlined />} style={{ marginBottom: 12 }} onClick={handleDownload} loading={downloading}>
-              下载 MCP
-            </Button>
+
+            {isExternal ? (
+              <>
+                <Button type="primary" size="large" block icon={<GithubOutlined />} style={{ marginBottom: 12 }} onClick={handleVisitSource} loading={openingSource}>
+                  查看源码
+                </Button>
+                <Button size="large" block icon={<CopyOutlined />} style={{ marginBottom: 12 }} onClick={handleCopyLink}>
+                  复制链接
+                </Button>
+              </>
+            ) : (
+              <Button type="primary" size="large" block icon={<DownloadOutlined />} style={{ marginBottom: 12 }} onClick={handleDownload} loading={downloading}>
+                下载 MCP
+              </Button>
+            )}
+
             <Button size="large" block icon={<StarOutlined />} onClick={handleRate}>写评价</Button>
             <Divider />
             <div>
@@ -167,7 +243,11 @@ function McpDetail() {
               <p><strong>版本:</strong> {current.version}</p>
               <p><strong>作者:</strong> {current.author_name}</p>
               <p><strong>分类:</strong> {current.category}</p>
+              <p><strong>来源:</strong> {sourceLabel}</p>
               <p><strong>更新时间:</strong> {current.updated_at ? new Date(current.updated_at).toLocaleDateString() : '-'}</p>
+              {isExternal && (
+                <p><strong>上次同步:</strong> {current.last_synced_at ? new Date(current.last_synced_at).toLocaleDateString() : '-'}</p>
+              )}
             </div>
           </Card>
         </Col>

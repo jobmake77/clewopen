@@ -154,7 +154,7 @@ function MarketPlace() {
         items={skillTrending}
         loading={skillTrendingLoading}
         resourceType="skill"
-        onItemClick={(item) => item.package_url && window.open(item.package_url, '_blank')}
+        onItemClick={(item) => navigate(`/skills/${item.id}`)}
       />
 
       {/* 5. MCP 热门榜单 */}
@@ -163,7 +163,7 @@ function MarketPlace() {
         items={mcpTrending}
         loading={mcpTrendingLoading}
         resourceType="mcp"
-        onItemClick={(item) => item.package_url && window.open(item.package_url, '_blank')}
+        onItemClick={(item) => navigate(`/mcps/${item.id}`)}
       />
 
       {/* 6. 定制开发悬赏榜 */}

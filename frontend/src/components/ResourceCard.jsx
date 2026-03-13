@@ -3,6 +3,13 @@ import { StarFilled, DownloadOutlined, LinkOutlined, GithubOutlined } from '@ant
 
 function ResourceCard({ item, onClick, resourceType = 'skill' }) {
   const isExternal = resourceType === 'skill' || resourceType === 'mcp'
+  const isUploadedResource = item.source_type === 'uploaded'
+  const sourceLabelMap = {
+    github: 'GitHub',
+    openclaw: 'OpenClaw',
+    manual: '平台上传',
+    external: '外部来源',
+  }
 
   const tags = Array.isArray(item.tags)
     ? item.tags
@@ -32,7 +39,7 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
           <span style={{ fontSize: 16, fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
             {item.name}
           </span>
-          {isExternal && (
+          {isExternal && !isUploadedResource && (
             <LinkOutlined style={{ color: '#888', fontSize: 14, flexShrink: 0 }} />
           )}
         </div>
@@ -56,6 +63,11 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
 
         {/* 标签行 */}
         <div style={{ marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {(item.source_platform || item.source_type) && (
+            <Tag color={isUploadedResource ? 'blue' : 'geekblue'}>
+              {sourceLabelMap[item.source_platform] || (isUploadedResource ? '平台上传' : '外部资源')}
+            </Tag>
+          )}
           {item.category && (
             <Tag color={resourceType === 'skill' ? 'green' : resourceType === 'mcp' ? 'magenta' : 'blue'}>{item.category}</Tag>
           )}
@@ -67,12 +79,27 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
         {/* 底部信息 */}
         <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#888' }}>
           {isExternal ? (
-            /* Skill/MCP: 显示 GitHub 星数 */
-            <span>
-              <GithubOutlined style={{ marginRight: 4 }} />
-              <StarFilled style={{ color: '#faad14', marginRight: 2 }} />
-              {item.github_stars || 0}
-            </span>
+            isUploadedResource ? (
+              <>
+                <span>
+                  <StarFilled style={{ color: '#faad14' }} /> {parseFloat(item.rating_average || 0).toFixed(1)}
+                </span>
+                <span>
+                  <DownloadOutlined /> {item.downloads_count || 0}
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  <GithubOutlined style={{ marginRight: 4 }} />
+                  <StarFilled style={{ color: '#faad14', marginRight: 2 }} />
+                  {item.github_stars || 0}
+                </span>
+                <span>
+                  <LinkOutlined /> {item.visits_count || 0}
+                </span>
+              </>
+            )
           ) : (
             /* Agent: 显示评分 + 下载量 */
             <>

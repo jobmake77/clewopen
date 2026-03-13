@@ -12,6 +12,7 @@
 - [ ] 安装 curl 或 Postman
 - [ ] 安装 psql 或数据库客户端
 - [ ] 准备测试用户账号
+- [ ] 如需验证 Skill / MCP 新目录模型，参考 `docs/SKILL_MCP_QA.md`
 
 ---
 

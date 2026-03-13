@@ -8,6 +8,10 @@ export const getSkillById = (id) => {
   return api.get(`/skills/${id}`)
 }
 
+export const visitSkill = (id) => {
+  return api.post(`/skills/${id}/visit`)
+}
+
 export const downloadSkill = async (id) => {
   return api.post(`/skills/${id}/download`, {}, { responseType: 'blob' })
 }

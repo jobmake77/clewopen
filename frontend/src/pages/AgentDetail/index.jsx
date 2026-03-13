@@ -6,7 +6,13 @@ import { DownloadOutlined, StarOutlined, FileTextOutlined, LinkOutlined, PlayCir
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
 import api from '../../services/api'
-import { trialAgent as trialAgentApi, getTrialHistory } from '../../services/trialService'
+import {
+  createTrialSession,
+  endTrialSession,
+  getTrialHistory,
+  getTrialSession,
+  sendTrialSessionMessage,
+} from '../../services/trialService'
 
 const { TextArea } = Input
 
@@ -30,6 +36,8 @@ function AgentDetail() {
   const [trialSending, setTrialSending] = useState(false)
   const [remainingTrials, setRemainingTrials] = useState(3)
   const [trialLoaded, setTrialLoaded] = useState(false)
+  const [trialSessionId, setTrialSessionId] = useState(null)
+  const [trialSessionStatus, setTrialSessionStatus] = useState(null)
 
   // Preview state
   const [preview, setPreview] = useState(null)
@@ -48,6 +56,12 @@ function AgentDetail() {
     setDepsLoaded(false)
     setPreview(null)
     setDependencies(null)
+    setTrialMessages([])
+    setTrialInput('')
+    setRemainingTrials(3)
+    setTrialLoaded(false)
+    setTrialSessionId(null)
+    setTrialSessionStatus(null)
   }, [dispatch, id])
 
   const loadReviews = async () => {
@@ -164,6 +178,34 @@ function AgentDetail() {
     }
   }
 
+  const loadTrialSession = async (sessionId, nextRemainingTrials = remainingTrials) => {
+    const res = await getTrialSession(sessionId)
+    if (!res.success) return
+
+    setTrialSessionId(res.data.session.id)
+    setTrialSessionStatus(res.data.session.status)
+    setRemainingTrials(nextRemainingTrials)
+    setTrialMessages(
+      res.data.messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        time: msg.created_at,
+      }))
+    )
+    setTrialLoaded(true)
+  }
+
+  const refreshRemainingTrials = async () => {
+    try {
+      const res = await getTrialHistory(id)
+      if (res.success) {
+        setRemainingTrials(res.data.remainingTrials)
+      }
+    } catch (error) {
+      console.error('Failed to refresh trial history:', error)
+    }
+  }
+
   const openTrialModal = async () => {
     if (!isAuthenticated) {
       message.warning('请先登录')
@@ -171,29 +213,49 @@ function AgentDetail() {
       return
     }
     setTrialVisible(true)
-    if (!trialLoaded) {
+    if (trialLoaded && trialSessionId) return
+
+    try {
+      const res = await createTrialSession(id)
+      if (res.success) {
+        await loadTrialSession(res.data.sessionId, res.data.remainingTrials)
+      }
+    } catch (error) {
+      const errMsg = error.response?.data?.error?.message || error.response?.data?.error || '无法创建试用会话'
+      message.error(errMsg)
+
       try {
-        const res = await getTrialHistory(id)
-        if (res.success) {
-          const msgs = []
-          for (const item of res.data.history) {
-            msgs.push({ role: 'user', content: item.message_content, time: item.created_at })
-            if (item.response_content) {
-              msgs.push({ role: 'assistant', content: item.response_content, time: item.created_at })
-            }
-          }
-          setTrialMessages(msgs)
-          setRemainingTrials(res.data.remainingTrials)
-          setTrialLoaded(true)
-        }
-      } catch (error) {
-        console.error('Failed to load trial history:', error)
+        await refreshRemainingTrials()
+      } catch {
+        // noop
       }
     }
   }
 
+  const handleEndTrial = async () => {
+    if (!trialSessionId) {
+      setTrialVisible(false)
+      return
+    }
+
+    try {
+      await endTrialSession(trialSessionId)
+      message.success('试用会话已结束')
+      setTrialVisible(false)
+      setTrialMessages([])
+      setTrialInput('')
+      setTrialLoaded(false)
+      setTrialSessionId(null)
+      setTrialSessionStatus('completed')
+      await refreshRemainingTrials()
+    } catch (error) {
+      const errMsg = error.response?.data?.error?.message || error.response?.data?.error || '结束试用失败'
+      message.error(errMsg)
+    }
+  }
+
   const handleTrialSend = async () => {
-    if (!trialInput.trim() || trialSending || remainingTrials <= 0) return
+    if (!trialInput.trim() || trialSending || remainingTrials <= 0 || !trialSessionId) return
 
     const userMsg = trialInput.trim()
     setTrialInput('')
@@ -201,16 +263,23 @@ function AgentDetail() {
     setTrialSending(true)
 
     try {
-      const res = await trialAgentApi(id, userMsg)
+      const res = await sendTrialSessionMessage(trialSessionId, userMsg)
       if (res.success) {
         setTrialMessages(prev => [...prev, { role: 'assistant', content: res.data.response }])
-        setRemainingTrials(res.data.remainingTrials)
+        setTrialSessionStatus(res.data.status)
       }
     } catch (error) {
-      const errMsg = error.response?.data?.error || '发送失败'
+      const errMsg = error.response?.data?.error?.message || error.response?.data?.error || '发送失败'
       message.error(errMsg)
       if (error.response?.status === 429) {
         setRemainingTrials(0)
+      }
+      if (trialSessionId) {
+        try {
+          await loadTrialSession(trialSessionId)
+        } catch (sessionError) {
+          console.error('Failed to reload trial session:', sessionError)
+        }
       }
     } finally {
       setTrialSending(false)
@@ -531,7 +600,14 @@ function AgentDetail() {
         footer={null}
         width={700}
       >
-        <div style={{ marginBottom: 12, textAlign: 'right' }}>
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            {trialSessionStatus && (
+              <Tag color={trialSessionStatus === 'active' ? 'green' : trialSessionStatus === 'failed' ? 'red' : 'default'}>
+                会话状态: {trialSessionStatus}
+              </Tag>
+            )}
+          </div>
           <Tag color={remainingTrials > 0 ? 'blue' : 'red'}>
             剩余试用次数: {remainingTrials}
           </Tag>
@@ -548,7 +624,7 @@ function AgentDetail() {
         }}>
           {trialMessages.length === 0 && (
             <div style={{ textAlign: 'center', color: '#999', marginTop: 160 }}>
-              发送消息开始试用此 Agent
+              {trialLoaded ? '发送消息开始试用此 Agent' : '正在准备试用环境...'}
             </div>
           )}
           {trialMessages.map((msg, i) => (
@@ -590,7 +666,7 @@ function AgentDetail() {
             onChange={(e) => setTrialInput(e.target.value)}
             onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); handleTrialSend() } }}
             placeholder={remainingTrials > 0 ? '输入消息试用 Agent...' : '试用次数已用完'}
-            disabled={remainingTrials <= 0 || trialSending}
+            disabled={remainingTrials <= 0 || trialSending || !trialSessionId || trialSessionStatus === 'failed'}
             autoSize={{ minRows: 1, maxRows: 3 }}
             style={{ flex: 1 }}
           />
@@ -599,9 +675,12 @@ function AgentDetail() {
             icon={<SendOutlined />}
             onClick={handleTrialSend}
             loading={trialSending}
-            disabled={remainingTrials <= 0 || !trialInput.trim()}
+            disabled={remainingTrials <= 0 || !trialInput.trim() || !trialSessionId || trialSessionStatus === 'failed'}
           >
             发送
+          </Button>
+          <Button onClick={handleEndTrial} disabled={!trialSessionId}>
+            结束试用
           </Button>
         </div>
       </Modal>

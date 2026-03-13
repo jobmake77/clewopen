@@ -133,7 +133,7 @@ async function insertMcps(records, authorId) {
     const slug = generateSlug(item.name || name);
     const description = item.description || `${name} MCP server`;
     const version = item.version || '1.0.0';
-    const packageUrl =
+    const externalUrl =
       item.repository?.url || item.websiteUrl || item.homepage || `https://github.com/${item.name || ''}`;
     const tags = extractTags(description);
     const downloads = randomInt(50, 500);
@@ -143,16 +143,19 @@ async function insertMcps(records, authorId) {
     try {
       const result = await pool.query(
         `INSERT INTO mcps (author_id, name, slug, description, version, category, tags,
-          package_url, manifest,
-          downloads_count, rating_average, status, published_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          package_url, external_url, manifest,
+          downloads_count, rating_average, status, published_at,
+          source_type, source_platform, source_id, last_synced_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (slug) DO NOTHING
          RETURNING id`,
         [
           authorId, name, slug, description, version, 'mcp-server', tags,
-          packageUrl,
+          null,
+          externalUrl,
           JSON.stringify({ name, version, description, source: 'mcp-registry' }),
           downloads, rating, 'approved', publishedAt,
+          'external', 'github', `mcp-registry:${slug}`, new Date().toISOString(),
         ]
       );
       if (result.rowCount > 0) inserted++;
@@ -208,7 +211,7 @@ async function insertSkills(records, authorId) {
     const version = pkg.version || '1.0.0';
     const keywords = pkg.keywords || [];
     const category = categorizeSkill(keywords);
-    const packageUrl = pkg.links?.npm || `https://www.npmjs.com/package/${name}`;
+    const externalUrl = pkg.links?.npm || `https://www.npmjs.com/package/${name}`;
     const tags = keywords.slice(0, 5);
 
     // Get real download count from npm
@@ -221,16 +224,19 @@ async function insertSkills(records, authorId) {
     try {
       const result = await pool.query(
         `INSERT INTO skills (author_id, name, slug, description, version, category, tags,
-          package_url, manifest,
-          downloads_count, rating_average, status, published_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          package_url, external_url, manifest,
+          downloads_count, rating_average, status, published_at,
+          source_type, source_platform, source_id, last_synced_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          ON CONFLICT (slug) DO NOTHING
          RETURNING id`,
         [
           authorId, name, slug, description, version, category, tags,
-          packageUrl,
+          null,
+          externalUrl,
           JSON.stringify({ name, version, description, source: 'npm', score: obj.score }),
           downloads, rating, 'approved', pkg.date || new Date().toISOString(),
+          'external', 'external', `npm:${name}`, new Date().toISOString(),
         ]
       );
       if (result.rowCount > 0) inserted++;
@@ -244,10 +250,10 @@ async function insertSkills(records, authorId) {
 // ─── Generate reviews & downloads ────────────────────────
 
 async function generateReviewsAndDownloads(authorId) {
-  console.log('\n📝 Generating reviews and download records ...');
+  console.log('\n📝 Generating reviews and visit records ...');
 
   let reviewCount = 0;
-  let downloadCount = 0;
+  let visitCount = 0;
 
   for (const table of ['mcps', 'skills']) {
     const resourceType = table === 'mcps' ? 'mcp' : 'skill';
@@ -271,17 +277,17 @@ async function generateReviewsAndDownloads(authorId) {
         // skip
       }
 
-      // 2-8 download records for trending (downloads table has no unique constraint)
-      const numDownloads = randomInt(2, 8);
-      for (let i = 0; i < numDownloads; i++) {
+      // External resources should accumulate visits instead of local download records.
+      const numVisits = randomInt(2, 8);
+      for (let i = 0; i < numVisits; i++) {
         try {
-          const daysAgo = randomInt(0, 30);
+          const sourceType = 'external';
           await pool.query(
-            `INSERT INTO downloads (resource_id, user_id, resource_type, version, downloaded_at)
-             VALUES ($1, $2, $3, $4, NOW() - INTERVAL '${daysAgo} days')`,
-            [row.id, authorId, resourceType, row.version || '1.0.0']
+            `INSERT INTO resource_visits (resource_id, user_id, resource_type, source_type, visited_at)
+             VALUES ($1, $2, $3, $4, NOW() - INTERVAL '${randomInt(0, 30)} days')`,
+            [row.id, authorId, resourceType, sourceType]
           );
-          downloadCount++;
+          visitCount++;
         } catch (err) {
           // FK violation or other — skip silently
         }
@@ -289,7 +295,7 @@ async function generateReviewsAndDownloads(authorId) {
     }
   }
 
-  return { reviewCount, downloadCount };
+  return { reviewCount, visitCount };
 }
 
 // ─── Main ────────────────────────────────────────────────
@@ -316,7 +322,7 @@ async function main() {
     const skillInserted = await insertSkills(skillRecords, authorId);
 
     // 4. Generate reviews & downloads
-    const { reviewCount, downloadCount } = await generateReviewsAndDownloads(authorId);
+    const { reviewCount, visitCount } = await generateReviewsAndDownloads(authorId);
 
     // 5. Summary
     console.log('\n' + '═'.repeat(50));
@@ -324,7 +330,7 @@ async function main() {
     console.log(`   MCP:       ${mcpInserted} 条新增（共获取 ${mcpRecords.length} 条）`);
     console.log(`   Skill:     ${skillInserted} 条新增（共获取 ${skillRecords.length} 条）`);
     console.log(`   Reviews:   ${reviewCount} 条`);
-    console.log(`   Downloads: ${downloadCount} 条`);
+    console.log(`   Visits:    ${visitCount} 条`);
     console.log('═'.repeat(50));
   } catch (err) {
     console.error('\n❌ 拉取失败:', err);

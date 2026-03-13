@@ -8,4 +8,6 @@ export const updateLlmConfig = (id, data) => api.put(`/admin/llm-configs/${id}`,
 
 export const activateLlmConfig = (id) => api.post(`/admin/llm-configs/${id}/activate`)
 
+export const healthCheckLlmConfig = (id, data = {}) => api.post(`/admin/llm-configs/${id}/health-check`, data)
+
 export const deleteLlmConfig = (id) => api.delete(`/admin/llm-configs/${id}`)

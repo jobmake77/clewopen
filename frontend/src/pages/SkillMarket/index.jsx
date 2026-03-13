@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { Row, Col, Input, Select, Pagination, Spin, Tabs, Alert } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import { fetchSkills } from '../../store/slices/skillSlice'
@@ -23,6 +24,7 @@ const sortOptions = [
 
 function SkillMarket() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { list, total, loading, error } = useSelector((state) => state.skill)
 
   const [page, setPage] = useState(1)
@@ -30,6 +32,7 @@ function SkillMarket() {
   const [category, setCategory] = useState('全部')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('default')
+  const [sourcePlatform, setSourcePlatform] = useState('all')
 
   useEffect(() => {
     dispatch(fetchSkills({
@@ -38,8 +41,9 @@ function SkillMarket() {
       category: category === '全部' ? undefined : category,
       search: search || undefined,
       sort: sort === 'default' ? undefined : sort,
+      sourcePlatform: sourcePlatform === 'all' ? undefined : sourcePlatform,
     }))
-  }, [dispatch, page, pageSize, category, search, sort])
+  }, [dispatch, page, pageSize, category, search, sort, sourcePlatform])
 
   const handleSearch = (value) => {
     setSearch(value)
@@ -53,6 +57,11 @@ function SkillMarket() {
 
   const handleSortChange = (value) => {
     setSort(value)
+    setPage(1)
+  }
+
+  const handleSourcePlatformChange = (value) => {
+    setSourcePlatform(value)
     setPage(1)
   }
 
@@ -97,12 +106,25 @@ function SkillMarket() {
           items={categories.map(c => ({ key: c.value, label: c.label }))}
           style={{ flex: 1 }}
         />
-        <Select
-          value={sort}
-          onChange={handleSortChange}
-          style={{ width: 140, flexShrink: 0, marginLeft: 16 }}
-          options={sortOptions}
-        />
+        <div style={{ display: 'flex', gap: 12, marginLeft: 16 }}>
+          <Select
+            value={sourcePlatform}
+            onChange={handleSourcePlatformChange}
+            style={{ width: 140 }}
+            options={[
+              { label: '全部来源', value: 'all' },
+              { label: 'GitHub', value: 'github' },
+              { label: 'OpenClaw', value: 'openclaw' },
+              { label: '平台上传', value: 'manual' },
+            ]}
+          />
+          <Select
+            value={sort}
+            onChange={handleSortChange}
+            style={{ width: 140, flexShrink: 0 }}
+            options={sortOptions}
+          />
+        </div>
       </div>
 
       {/* 卡片网格 */}
@@ -113,7 +135,7 @@ function SkillMarket() {
               <ResourceCard
                 item={item}
                 resourceType="skill"
-                onClick={(item) => item.package_url && window.open(item.package_url, '_blank')}
+                onClick={(item) => navigate(`/skills/${item.id}`)}
               />
             </Col>
           ))}
