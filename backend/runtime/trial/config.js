@@ -1,7 +1,11 @@
 import os from 'os'
 import path from 'path'
+import { fileURLToPath } from 'url'
 
 const DEFAULT_ROOT_DIR = path.join(os.tmpdir(), 'openclew', 'trial-sessions')
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const DEFAULT_POOL_ROOT_DIR = path.resolve(__dirname, '../../.trial-runtime/trial-pool')
 
 function normalizeRuntimeMode(value) {
   return value === 'container' ? 'container' : 'prompt'
@@ -17,7 +21,26 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function normalizeIdentifier(value, fallback) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return normalized || fallback
+}
+
+function resolvePoolNamespace() {
+  return normalizeIdentifier(
+    process.env.TRIAL_POOL_NAMESPACE || `${os.hostname()}-${process.env.PORT || 'default'}`,
+    'default'
+  )
+}
+
 export function getTrialRuntimeConfig() {
+  const poolNamespace = resolvePoolNamespace()
+
   return {
     mode: normalizeRuntimeMode(process.env.TRIAL_RUNTIME_MODE),
     workspaceRoot: process.env.TRIAL_WORKSPACE_ROOT || DEFAULT_ROOT_DIR,
@@ -29,13 +52,27 @@ export function getTrialRuntimeConfig() {
     pidsLimit: process.env.TRIAL_SANDBOX_PIDS_LIMIT || '256',
     readonlyRootfs: parseBoolean(process.env.TRIAL_SANDBOX_READONLY_ROOTFS, false),
     keepFailedSessions: parseBoolean(process.env.TRIAL_SANDBOX_KEEP_FAILED_SESSIONS, false),
+    mountLocalRuntimeFiles: parseBoolean(
+      process.env.TRIAL_SANDBOX_MOUNT_LOCAL_RUNTIME,
+      process.env.NODE_ENV !== 'production'
+    ),
     execTimeoutMs: parsePositiveInt(process.env.TRIAL_SANDBOX_EXEC_TIMEOUT_MS, 180000),
     installCommand:
       process.env.TRIAL_SANDBOX_INSTALL_COMMAND || '/opt/openclew/bin/session-runner.sh install',
+    prewarmCommand:
+      process.env.TRIAL_SANDBOX_PREWARM_COMMAND ||
+      '/opt/openclew/bin/session-runner.sh prewarm-gateway',
     runCommand:
       process.env.TRIAL_SANDBOX_RUN_COMMAND || '/opt/openclew/bin/session-runner.sh run',
     openclawNodeOptions:
       process.env.TRIAL_OPENCLAW_NODE_OPTIONS || '--max-old-space-size=1024',
+    openclawGatewayPort: parsePositiveInt(process.env.TRIAL_OPENCLAW_GATEWAY_PORT, 19003),
+    openclawGatewayStartupTimeoutSeconds: parsePositiveInt(
+      process.env.TRIAL_OPENCLAW_GATEWAY_STARTUP_TIMEOUT_SECONDS,
+      60
+    ),
+    openclawThinkingLevel: process.env.TRIAL_OPENCLAW_THINKING_LEVEL || '',
+    openclawVerbose: process.env.TRIAL_OPENCLAW_VERBOSE || 'on',
     shell: process.env.TRIAL_SANDBOX_SHELL || '/bin/sh',
     dockerBin: process.env.TRIAL_SANDBOX_DOCKER_BIN || '/usr/local/bin/docker',
     dockerHelperPath:
@@ -43,5 +80,26 @@ export function getTrialRuntimeConfig() {
       '/Applications/Docker.app/Contents/Resources/bin',
     baseImage: process.env.TRIAL_SANDBOX_BASE_IMAGE || 'node:22-bookworm-slim',
     openclewInstallCommand: process.env.OPENCLEW_INSTALL_COMMAND || '',
+    poolEnabled: parseBoolean(process.env.TRIAL_POOL_ENABLED, false),
+    poolSize: parsePositiveInt(process.env.TRIAL_POOL_SIZE, 5),
+    poolAcquireTimeoutMs: parsePositiveInt(process.env.TRIAL_POOL_ACQUIRE_TIMEOUT_MS, 15000),
+    poolMaintenanceIntervalMs: parsePositiveInt(
+      process.env.TRIAL_POOL_MAINTENANCE_INTERVAL_MS,
+      10000
+    ),
+    poolBootstrapConcurrency: parsePositiveInt(
+      process.env.TRIAL_POOL_BOOTSTRAP_CONCURRENCY,
+      2
+    ),
+    poolPrewarmGateway: parseBoolean(process.env.TRIAL_POOL_PREWARM_GATEWAY, false),
+    poolRecycleAfterSessions: parsePositiveInt(
+      process.env.TRIAL_POOL_RECYCLE_AFTER_SESSIONS,
+      30
+    ),
+    poolNamespace,
+    poolWorkspaceRoot: path.join(
+      process.env.TRIAL_POOL_WORKSPACE_ROOT || DEFAULT_POOL_ROOT_DIR,
+      poolNamespace
+    ),
   }
 }

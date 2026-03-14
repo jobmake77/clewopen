@@ -1,0 +1,54 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clewopen-backend-trial
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: clewopen
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TRIAL_RUNTIME_MODE: container
+      TRIAL_SANDBOX_IMAGE: ${TRIAL_SANDBOX_IMAGE:-openclew/trial-base:latest}
+      TRIAL_SANDBOX_DOCKER_BIN: /usr/bin/docker
+      TRIAL_SANDBOX_DOCKER_HELPER_PATH: ""
+      TRIAL_SANDBOX_MOUNT_LOCAL_RUNTIME: "false"
+      TRIAL_SANDBOX_NETWORK: ${TRIAL_SANDBOX_NETWORK:-bridge}
+      TRIAL_SANDBOX_MEMORY: ${TRIAL_SANDBOX_MEMORY:-1536m}
+      TRIAL_SANDBOX_CPUS: ${TRIAL_SANDBOX_CPUS:-1}
+      TRIAL_SANDBOX_PIDS_LIMIT: ${TRIAL_SANDBOX_PIDS_LIMIT:-256}
+      TRIAL_OPENCLAW_NODE_OPTIONS: ${TRIAL_OPENCLAW_NODE_OPTIONS:---max-old-space-size=1024}
+      TRIAL_POOL_ENABLED: "true"
+      TRIAL_POOL_SIZE: ${TRIAL_POOL_SIZE:-5}
+      TRIAL_POOL_NAMESPACE: ${TRIAL_POOL_NAMESPACE:-trial-backend-5000}
+      TRIAL_POOL_ACQUIRE_TIMEOUT_MS: ${TRIAL_POOL_ACQUIRE_TIMEOUT_MS:-15000}
+      TRIAL_POOL_MAINTENANCE_INTERVAL_MS: ${TRIAL_POOL_MAINTENANCE_INTERVAL_MS:-10000}
+      TRIAL_POOL_BOOTSTRAP_CONCURRENCY: ${TRIAL_POOL_BOOTSTRAP_CONCURRENCY:-2}
+      TRIAL_POOL_PREWARM_GATEWAY: ${TRIAL_POOL_PREWARM_GATEWAY:-false}
+      TRIAL_POOL_RECYCLE_AFTER_SESSIONS: ${TRIAL_POOL_RECYCLE_AFTER_SESSIONS:-30}
+      TRIAL_WORKSPACE_ROOT: ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/.trial-runtime/trial-sessions
+      TRIAL_POOL_WORKSPACE_ROOT: ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/.trial-runtime/trial-pool
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/.trial-runtime:${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/.trial-runtime
+      - ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/storage:/app/storage
+      - ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/uploads:/app/uploads
+    networks:
+      - clewopen-network
+    command: sh -c "npm run db:migrate && npm start"
+
+networks:
+  clewopen-network:
+    name: clewopen_clewopen-network
+    external: true

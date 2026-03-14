@@ -109,6 +109,27 @@ npm run dev
 
 访问 http://localhost:5173 开始使用！
 
+### 启动 5 个 Warm Slot 的试用后端
+
+如果你想直接启动带 warm pool 的在线试用后端：
+
+```bash
+cp backend/.env.example backend/.env
+bash scripts/start-trial-stack.sh
+```
+
+这会：
+
+- 启动 Postgres / Redis
+- 自动构建 `openclew/trial-base:latest`
+- 启动带 `TRIAL_POOL_SIZE=5` 的试用后端
+
+停止：
+
+```bash
+bash scripts/stop-trial-stack.sh
+```
+
 ## 📦 创建你的第一个 Agent
 
 ### 1. 创建 Agent 目录

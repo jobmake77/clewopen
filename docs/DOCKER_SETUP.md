@@ -14,6 +14,12 @@
 - 快速调试
 - 本地测试
 
+### 3. docker-compose.trial.yml（Warm Pool 试用后端）
+只启动带 5 个 warm slot 的 trial backend，适合：
+- 在线试用环境验证
+- 预热池压测
+- 管理后台查看 `试用沙盒` 运维面板
+
 ## 使用方式
 
 ### 推荐：开发版（只运行数据库和 Redis）
@@ -55,6 +61,36 @@ docker-compose logs -f frontend
 - 测试完整部署
 - CI/CD 环境
 - 演示给他人
+
+### Warm Pool 试用后端
+
+```bash
+# 复制后端配置
+cp backend/.env.example backend/.env
+
+# 启动基础设施 + 试用后端（默认 5 个 warm slot）
+bash scripts/start-trial-stack.sh
+```
+
+这个脚本会自动完成：
+
+- 启动 `docker-compose.dev.yml` 中的 Postgres / Redis
+- 检查并构建 `openclew/trial-base:latest`
+- 启动 `docker-compose.trial.yml` 中的 trial backend
+- 固化以下 warm pool 参数：
+  - `TRIAL_POOL_ENABLED=true`
+  - `TRIAL_POOL_SIZE=5`
+  - `TRIAL_POOL_BOOTSTRAP_CONCURRENCY=2`
+
+停止方式：
+
+```bash
+# 只停止 trial backend
+bash scripts/stop-trial-stack.sh
+
+# trial backend + 基础设施一起停掉
+bash scripts/stop-trial-stack.sh --with-infra
+```
 
 ## 停止服务
 

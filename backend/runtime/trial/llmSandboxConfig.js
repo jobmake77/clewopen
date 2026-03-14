@@ -93,6 +93,39 @@ function buildUsageDefaults(config) {
   }
 }
 
+function parseOptionalInt(value) {
+  const parsed = Number.parseInt(String(value || '').trim(), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseOptionalFloat(value) {
+  const parsed = Number.parseFloat(String(value || '').trim())
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function applyTrialSandboxOverrides(config) {
+  if (!config) return config
+
+  const modelOverride = normalizeText(process.env.TRIAL_LLM_MODEL_OVERRIDE)
+  const apiUrlOverride = normalizeText(process.env.TRIAL_LLM_API_URL_OVERRIDE)
+  const apiKeyOverride = normalizeText(process.env.TRIAL_LLM_API_KEY_OVERRIDE)
+  const providerOverride = normalizeLowerText(process.env.TRIAL_LLM_PROVIDER_OVERRIDE)
+  const authTypeOverride = normalizeLowerText(process.env.TRIAL_LLM_AUTH_TYPE_OVERRIDE)
+  const maxTokensOverride = parseOptionalInt(process.env.TRIAL_LLM_MAX_TOKENS_OVERRIDE)
+  const temperatureOverride = parseOptionalFloat(process.env.TRIAL_LLM_TEMPERATURE_OVERRIDE)
+
+  return {
+    ...config,
+    provider_name: providerOverride || config.provider_name,
+    api_url: apiUrlOverride || config.api_url,
+    api_key: apiKeyOverride || config.api_key,
+    model_id: modelOverride || config.model_id,
+    auth_type: authTypeOverride || config.auth_type,
+    max_tokens: maxTokensOverride ?? config.max_tokens,
+    temperature: temperatureOverride ?? config.temperature,
+  }
+}
+
 export async function resolveTrialSandboxLlmConfig(session = null) {
   const metadata = session?.metadata && typeof session.metadata === 'object'
     ? session.metadata
@@ -113,23 +146,25 @@ export async function resolveTrialSandboxLlmConfig(session = null) {
 
   const activeConfig = await LlmConfigModel.findActive('trial')
   if (activeConfig && activeConfig.is_enabled !== false) {
-    return activeConfig
+    return applyTrialSandboxOverrides(activeConfig)
   }
 
-  return getEnvLlmConfig()
+  return applyTrialSandboxOverrides(getEnvLlmConfig())
 }
 
 export function buildTrialSandboxLlmEnv(config) {
-  if (!config) {
+  const resolvedConfig = applyTrialSandboxOverrides(config)
+
+  if (!resolvedConfig) {
     throw new Error('No active trial LLM config is available for the OpenClaw sandbox')
   }
 
-  const compatibility = inferCompatibility(config)
-  const authType = resolveSupportedAuthType(config, compatibility)
-  const apiUrl = stripKnownEndpointSuffix(config.api_url, compatibility)
-  const modelId = normalizeText(config.model_id)
-  const providerName = normalizeLowerText(config.provider_name) || compatibility
-  let apiKey = normalizeText(config.api_key)
+  const compatibility = inferCompatibility(resolvedConfig)
+  const authType = resolveSupportedAuthType(resolvedConfig, compatibility)
+  const apiUrl = stripKnownEndpointSuffix(resolvedConfig.api_url, compatibility)
+  const modelId = normalizeText(resolvedConfig.model_id)
+  const providerName = normalizeLowerText(resolvedConfig.provider_name) || compatibility
+  let apiKey = normalizeText(resolvedConfig.api_key)
 
   if (!apiUrl) {
     throw new Error('Trial LLM config is missing a usable API URL')
@@ -147,7 +182,7 @@ export function buildTrialSandboxLlmEnv(config) {
     throw new Error('Trial LLM config is missing an API key required by the sandbox')
   }
 
-  const usageDefaults = buildUsageDefaults(config)
+  const usageDefaults = buildUsageDefaults(resolvedConfig)
 
   return {
     TRIAL_LLM_PROVIDER_ID: TRIAL_PROVIDER_ID,
@@ -163,18 +198,19 @@ export function buildTrialSandboxLlmEnv(config) {
 }
 
 export function buildTrialSandboxLlmMetadata(config) {
-  if (!config) return null
+  const resolvedConfig = applyTrialSandboxOverrides(config)
+  if (!resolvedConfig) return null
 
-  const compatibility = inferCompatibility(config)
-  const authType = resolveSupportedAuthType(config, compatibility)
-  const apiUrl = stripKnownEndpointSuffix(config.api_url, compatibility)
+  const compatibility = inferCompatibility(resolvedConfig)
+  const authType = resolveSupportedAuthType(resolvedConfig, compatibility)
+  const apiUrl = stripKnownEndpointSuffix(resolvedConfig.api_url, compatibility)
 
   return {
-    llm_config_id: config.id || null,
-    provider_name: normalizeLowerText(config.provider_name) || compatibility,
+    llm_config_id: resolvedConfig.id || null,
+    provider_name: normalizeLowerText(resolvedConfig.provider_name) || compatibility,
     compatibility,
     auth_type: authType,
     api_url: apiUrl,
-    model_id: normalizeText(config.model_id),
+    model_id: normalizeText(resolvedConfig.model_id),
   }
 }

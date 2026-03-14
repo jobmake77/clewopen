@@ -89,3 +89,9 @@ export const triggerSync = () => {
 export const getSyncHistory = () => {
   return api.get('/admin/sync-history')
 }
+
+// ==================== Trial Runtime ====================
+
+export const getTrialRuntimePoolStatus = () => {
+  return api.get('/admin/trial-runtime/pool')
+}

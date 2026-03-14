@@ -1,5 +1,7 @@
 FROM node:20-alpine
 
+RUN apk add --no-cache docker-cli bash
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -10,4 +12,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["npm", "run", "dev"]
+CMD ["npm", "start"]

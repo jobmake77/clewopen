@@ -6,6 +6,7 @@ import AgentReview from './AgentReview'
 import ReviewManagement from './ReviewManagement'
 import DataSync from './DataSync'
 import LlmSettings from './LlmSettings'
+import TrialRuntime from './TrialRuntime'
 import { getPendingAgents, getAllReviews, getAllAgentsAdmin } from '../../services/adminService'
 import './index.css'
 
@@ -61,6 +62,11 @@ function Admin() {
       key: 'llm-settings',
       label: 'LLM 配置',
       children: <LlmSettings />
+    },
+    {
+      key: 'trial-runtime',
+      label: '试用沙盒',
+      children: <TrialRuntime />
     }
   ]
 

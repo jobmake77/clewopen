@@ -16,11 +16,13 @@ import notificationRoutes from '../api/notifications/routes.js'
 import trialSessionRoutes from '../api/trial-sessions/routes.js'
 import adminSyncRoutes from '../api/admin/syncRoutes.js'
 import adminLlmRoutes from '../api/admin/llmConfigRoutes.js'
+import adminTrialRuntimeRoutes from '../api/admin/trialRuntimeRoutes.js'
 import { errorHandler } from '../middleware/errorHandler.js'
 import { logger } from '../config/logger.js'
 import { bootstrapActiveLlmConfigFromEnv } from '../services/llmConfigBootstrapService.js'
 import { startScheduler, stopScheduler } from '../services/syncService.js'
 import { startTrialCleanupWorker, stopTrialCleanupWorker } from '../runtime/trial/cleanupWorker.js'
+import { startTrialSandboxPool, stopTrialSandboxPool } from '../runtime/trial/sandbox/poolManager.js'
 
 dotenv.config()
 
@@ -92,6 +94,7 @@ app.use('/api/notifications', notificationRoutes)
 app.use('/api/trial-sessions', trialSessionRoutes)
 app.use('/api/admin', adminSyncRoutes)
 app.use('/api/admin', adminLlmRoutes)
+app.use('/api/admin', adminTrialRuntimeRoutes)
 
 // Health check
 app.get('/health', (req, res) => {
@@ -115,6 +118,7 @@ async function startServer() {
     console.log(`🚀 Server running on http://localhost:${PORT}`)
     startScheduler()
     startTrialCleanupWorker()
+    startTrialSandboxPool()
   })
 }
 
@@ -123,6 +127,7 @@ const gracefulShutdown = (signal) => {
   logger.info(`${signal} received, shutting down gracefully...`)
   stopScheduler()
   stopTrialCleanupWorker()
+  stopTrialSandboxPool()
   if (!server) {
     process.exit(0)
     return

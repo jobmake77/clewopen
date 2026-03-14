@@ -1,462 +1,1046 @@
-// OpenCLEW 自动化测试脚本 (Node.js)
-// 测试文件下载、下载统计、评分统计功能
+import axios from 'axios'
+import pg from 'pg'
+import { fileURLToPath, pathToFileURL } from 'url'
+import path from 'path'
+import fs from 'fs/promises'
 
-import axios from 'axios';
-import pg from 'pg';
-const { Pool } = pg;
+const { Pool } = pg
 
-// 配置
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = String(process.env.BASE_URL || 'http://localhost:3001').replace(/\/+$/, '')
+const FRONTEND_URL = String(process.env.FRONTEND_URL || '').replace(/\/+$/, '')
 const DB_CONFIG = {
-  host: 'localhost',
-  port: 5432,
-  database: 'clewopen',
-  user: 'postgres',
-  password: 'postgres',
-};
+  host: process.env.DB_HOST || 'localhost',
+  port: Number.parseInt(process.env.DB_PORT || '5432', 10),
+  database: process.env.DB_NAME || 'clewopen',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+}
 
-// 数据库连接池
-const pool = new Pool(DB_CONFIG);
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@clewopen.com'
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password123'
+const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.REQUEST_TIMEOUT_MS || '30000', 10)
+const TRIAL_TIMEOUT_MS = Number.parseInt(process.env.TRIAL_TIMEOUT_MS || '240000', 10)
 
-// 测试结果统计
-let totalTests = 0;
-let passedTests = 0;
-let failedTests = 0;
+const pool = new Pool(DB_CONFIG)
 
-// 颜色输出
+let totalTests = 0
+let passedTests = 0
+let failedTests = 0
+const failures = []
+
 const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
   red: '\x1b[31m',
   yellow: '\x1b[33m',
-};
+  blue: '\x1b[34m',
+}
 
-// 日志函数
 const log = {
-  info: (msg) => console.log(`${colors.green}[INFO]${colors.reset} ${msg}`),
-  error: (msg) => console.log(`${colors.red}[ERROR]${colors.reset} ${msg}`),
-  warning: (msg) => console.log(`${colors.yellow}[WARNING]${colors.reset} ${msg}`),
-};
+  section(message) {
+    console.log(`\n${colors.blue}=== ${message} ===${colors.reset}`)
+  },
+  info(message) {
+    console.log(`${colors.green}[INFO]${colors.reset} ${message}`)
+  },
+  warn(message) {
+    console.log(`${colors.yellow}[WARN]${colors.reset} ${message}`)
+  },
+  error(message) {
+    console.log(`${colors.red}[ERROR]${colors.reset} ${message}`)
+  },
+}
 
-// 测试结果记录
-const testPass = (name) => {
-  totalTests++;
-  passedTests++;
-  console.log(`${colors.green}✅ PASS${colors.reset}: ${name}`);
-};
+function testPass(name, details = '') {
+  totalTests += 1
+  passedTests += 1
+  console.log(`${colors.green}PASS${colors.reset} ${name}${details ? ` -> ${details}` : ''}`)
+}
 
-const testFail = (name, reason) => {
-  totalTests++;
-  failedTests++;
-  console.log(`${colors.red}❌ FAIL${colors.reset}: ${name}`);
-  console.log(`   ${colors.red}原因${colors.reset}: ${reason}`);
-};
+function testFail(name, reason) {
+  totalTests += 1
+  failedTests += 1
+  failures.push({ name, reason })
+  console.log(`${colors.red}FAIL${colors.reset} ${name}`)
+  console.log(`  ${reason}`)
+}
 
-// 数据库查询函数
-const dbQuery = async (sql) => {
-  const client = await pool.connect();
+async function dbQuery(sql, params = []) {
+  const client = await pool.connect()
   try {
-    const result = await client.query(sql);
-    return result.rows;
+    return await client.query(sql, params)
   } finally {
-    client.release();
+    client.release()
   }
-};
+}
 
-// 检查服务状态
-const checkServices = async () => {
-  log.info('检查服务状态...');
+async function request(method, url, options = {}) {
+  return axios({
+    method,
+    url,
+    timeout: options.timeout || REQUEST_TIMEOUT_MS,
+    headers: options.headers,
+    data: options.data,
+    responseType: options.responseType,
+    validateStatus: options.validateStatus || (() => true),
+  })
+}
 
-  try {
-    // 检查后端
-    await axios.get(`${BASE_URL}/health`);
-    log.info('后端服务运行正常 ✓');
+function parseEventStreamChunks(buffer, onEvent) {
+  const chunks = buffer.split(/\r?\n\r?\n/)
+  const rest = chunks.pop() || ''
 
-    // 检查数据库
-    await dbQuery('SELECT 1');
-    log.info('数据库连接正常 ✓');
-  } catch (error) {
-    log.error('服务检查失败: ' + error.message);
-    process.exit(1);
-  }
-};
+  for (const chunk of chunks) {
+    if (!chunk.trim() || chunk.startsWith(':')) continue
 
-// 准备测试数据
-const setupTestData = async () => {
-  log.info('准备测试数据...');
+    let event = 'message'
+    const dataLines = []
 
-  const timestamp = Date.now();
-  const testUser = {
-    username: `testuser_${timestamp}`,
-    email: `test_${timestamp}@example.com`,
-    password: 'Test123456',
-  };
-
-  try {
-    // 注册测试用户
-    await axios.post(`${BASE_URL}/api/auth/register`, testUser);
-
-    // 登录获取 token
-    const loginResponse = await axios.post(`${BASE_URL}/api/auth/login`, {
-      email: testUser.email,
-      password: testUser.password,
-    });
-
-    const { token, user } = loginResponse.data.data;
-    log.info(`测试用户创建成功: ${testUser.email}`);
-    log.info(`Token: ${token.substring(0, 20)}...`);
-
-    // 获取第一个 Agent 用于测试
-    const agentsResponse = await axios.get(`${BASE_URL}/api/agents?pageSize=1`);
-    const testAgentId = agentsResponse.data.data.agents[0]?.id;
-
-    if (!testAgentId) {
-      log.error('没有可用的测试 Agent');
-      process.exit(1);
+    for (const line of chunk.split(/\r?\n/)) {
+      if (line.startsWith('event:')) {
+        event = line.slice(6).trim() || 'message'
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trimStart())
+      }
     }
 
-    log.info(`测试 Agent ID: ${testAgentId}`);
+    if (dataLines.length === 0) continue
 
-    return { token, userId: user.id, testAgentId, testUser };
-  } catch (error) {
-    log.error('测试数据准备失败: ' + error.message);
-    process.exit(1);
-  }
-};
-
-// 测试 1: 文件下载 API
-const testDownloadAPI = async (token, testAgentId) => {
-  log.info('=== 测试 1: 文件下载 API ===');
-
-  try {
-    // 1.1 正常下载
-    const downloadResponse = await axios.post(
-      `${BASE_URL}/api/agents/${testAgentId}/download`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    if (downloadResponse.data.success && downloadResponse.data.data.downloadUrl) {
-      testPass('下载 API 返回成功');
-    } else {
-      testFail('下载 API 返回失败', JSON.stringify(downloadResponse.data));
+    let payload = dataLines.join('\n')
+    try {
+      payload = JSON.parse(payload)
+    } catch {
+      // Keep string payload when JSON parse fails.
     }
 
-    // 1.2 验证下载链接可访问
-    const downloadUrl = downloadResponse.data.data.downloadUrl;
-    if (downloadUrl) {
-      try {
-        const fileResponse = await axios.head(downloadUrl);
-        if (fileResponse.status === 200) {
-          testPass(`下载链接可访问 (HTTP ${fileResponse.status})`);
-        } else {
-          testFail('下载链接不可访问', `HTTP ${fileResponse.status}`);
+    onEvent({ event, data: payload })
+  }
+
+  return rest
+}
+
+async function streamRequest(url, options = {}) {
+  const controller = new AbortController()
+  const timeoutMs = options.timeout || REQUEST_TIMEOUT_MS
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const startedAt = Date.now()
+
+  try {
+    const response = await fetch(url, {
+      method: options.method || 'POST',
+      headers: options.headers,
+      body: options.data ? JSON.stringify(options.data) : undefined,
+      signal: controller.signal,
+    })
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+    const events = []
+    let buffer = ''
+    let firstEventAtMs = null
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read()
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+        buffer = parseEventStreamChunks(buffer, (event) => {
+          if (firstEventAtMs === null) {
+            firstEventAtMs = Date.now() - startedAt
+          }
+          events.push(event)
+        })
+
+        if (done) break
+      }
+    }
+
+    if (buffer.trim()) {
+      parseEventStreamChunks(buffer, (event) => {
+        if (firstEventAtMs === null) {
+          firstEventAtMs = Date.now() - startedAt
         }
-      } catch (error) {
-        testFail('下载链接不可访问', error.message);
-      }
+        events.push(event)
+      })
     }
 
-    // 1.3 测试不存在的 Agent
-    try {
-      await axios.post(
-        `${BASE_URL}/api/agents/00000000-0000-0000-0000-000000000000/download`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      testFail('不存在的 Agent 应返回 404', '实际返回成功');
-    } catch (error) {
-      if (error.response?.status === 404) {
-        testPass('不存在的 Agent 返回 404');
-      } else {
-        testFail('不存在的 Agent 应返回 404', `实际返回 ${error.response?.status}`);
-      }
+    return {
+      status: response.status,
+      ok: response.ok,
+      events,
+      firstEventAtMs,
     }
-
-    // 1.4 测试未认证用户
-    try {
-      await axios.post(`${BASE_URL}/api/agents/${testAgentId}/download`);
-      testFail('未认证用户应返回 401', '实际返回成功');
-    } catch (error) {
-      if (error.response?.status === 401) {
-        testPass('未认证用户返回 401');
-      } else {
-        testFail('未认证用户应返回 401', `实际返回 ${error.response?.status}`);
-      }
-    }
-  } catch (error) {
-    testFail('下载 API 测试失败', error.message);
+  } finally {
+    clearTimeout(timeoutId)
   }
-};
+}
 
-// 测试 2: 下载统计
-const testDownloadStatistics = async (token, userId, testAgentId) => {
-  log.info('=== 测试 2: 下载统计 ===');
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function timed(label, fn) {
+  const startedAt = Date.now()
+  const value = await fn()
+  const durationMs = Date.now() - startedAt
+  log.info(`${label}: ${durationMs}ms`)
+  return { value, durationMs }
+}
+
+function ensure(condition, message) {
+  if (!condition) {
+    throw new Error(message)
+  }
+}
+
+function parseJson(response) {
+  if (!response?.data || typeof response.data !== 'object') {
+    throw new Error('Response is not valid JSON')
+  }
+  return response.data
+}
+
+async function checkServices() {
+  log.section('基础服务检查')
 
   try {
-    // 2.1 获取初始下载计数
-    const initialResult = await dbQuery(
-      `SELECT downloads_count FROM agents WHERE id = '${testAgentId}'`
-    );
-    const initialCount = initialResult[0].downloads_count;
-    log.info(`初始下载计数: ${initialCount}`);
-
-    // 2.2 执行下载
-    await axios.post(
-      `${BASE_URL}/api/agents/${testAgentId}/download`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // 2.3 验证计数增加
-    const newResult = await dbQuery(
-      `SELECT downloads_count FROM agents WHERE id = '${testAgentId}'`
-    );
-    const newCount = newResult[0].downloads_count;
-    log.info(`新下载计数: ${newCount}`);
-
-    if (newCount > initialCount) {
-      testPass(`下载计数正确增加 (${initialCount} -> ${newCount})`);
-    } else {
-      testFail('下载计数未增加', `期望 > ${initialCount}, 实际 ${newCount}`);
-    }
-
-    // 2.4 验证下载记录
-    const downloadRecords = await dbQuery(
-      `SELECT COUNT(*) as count FROM downloads WHERE agent_id = '${testAgentId}' AND user_id = '${userId}'`
-    );
-    const recordCount = parseInt(downloadRecords[0].count);
-
-    if (recordCount > 0) {
-      testPass(`下载记录已创建 (共 ${recordCount} 条)`);
-    } else {
-      testFail('下载记录未创建', `记录数: ${recordCount}`);
-    }
-
-    // 2.5 多次下载测试
-    const beforeMulti = await dbQuery(
-      `SELECT downloads_count FROM agents WHERE id = '${testAgentId}'`
-    );
-    const beforeMultiCount = beforeMulti[0].downloads_count;
-
-    for (let i = 0; i < 3; i++) {
-      await axios.post(
-        `${BASE_URL}/api/agents/${testAgentId}/download`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    const afterMulti = await dbQuery(
-      `SELECT downloads_count FROM agents WHERE id = '${testAgentId}'`
-    );
-    const afterMultiCount = afterMulti[0].downloads_count;
-
-    const diff = afterMultiCount - beforeMultiCount;
-    if (diff === 3) {
-      testPass(`多次下载计数累加正确 (+${diff})`);
-    } else {
-      testFail('多次下载计数累加错误', `期望 +3, 实际 +${diff}`);
-    }
+    const health = await request('get', `${BASE_URL}/health`)
+    ensure(health.status === 200, `Health check returned ${health.status}`)
+    testPass('后端 health', `${BASE_URL}/health -> 200`)
   } catch (error) {
-    testFail('下载统计测试失败', error.message);
+    testFail('后端 health', error.message)
   }
-};
-
-// 测试 3: 评分统计
-const testRatingStatistics = async (token, userId, testAgentId) => {
-  log.info('=== 测试 3: 评分统计 ===');
 
   try {
-    // 3.1 提交评价
-    try {
-      const ratingResponse = await axios.post(
-        `${BASE_URL}/api/agents/${testAgentId}/rate`,
-        {
-          rating: 5,
-          comment: '自动化测试评价',
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      if (ratingResponse.data.success) {
-        testPass('评价提交成功');
-      } else {
-        testFail('评价提交失败', JSON.stringify(ratingResponse.data));
-      }
-    } catch (error) {
-      if (error.response?.data?.error?.message?.includes('already reviewed')) {
-        testPass('评价提交成功 (已存在评价)');
-      } else {
-        testFail('评价提交失败', error.message);
-      }
-    }
-
-    // 3.2 验证评价记录
-    const reviewRecords = await dbQuery(
-      `SELECT COUNT(*) as count FROM reviews WHERE agent_id = '${testAgentId}' AND user_id = '${userId}'`
-    );
-    const reviewCount = parseInt(reviewRecords[0].count);
-
-    if (reviewCount > 0) {
-      testPass('评价记录已创建');
-    } else {
-      testFail('评价记录未创建', `记录数: ${reviewCount}`);
-    }
-
-    // 3.3 批准评价并验证评分更新
-    const reviewIdResult = await dbQuery(
-      `SELECT id FROM reviews WHERE agent_id = '${testAgentId}' AND user_id = '${userId}' LIMIT 1`
-    );
-
-    if (reviewIdResult.length > 0) {
-      const reviewId = reviewIdResult[0].id;
-      await dbQuery(`UPDATE reviews SET status = 'approved' WHERE id = '${reviewId}'`);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const ratingResult = await dbQuery(
-        `SELECT rating_average, reviews_count FROM agents WHERE id = '${testAgentId}'`
-      );
-      const ratingAvg = parseFloat(ratingResult[0].rating_average);
-      const reviewsCount = parseInt(ratingResult[0].reviews_count);
-
-      if (ratingAvg > 0) {
-        testPass(`评分已更新 (平均分: ${ratingAvg})`);
-      } else {
-        testFail('评分未更新', `平均分: ${ratingAvg}`);
-      }
-
-      if (reviewsCount > 0) {
-        testPass(`评价计数已更新 (计数: ${reviewsCount})`);
-      } else {
-        testFail('评价计数未更新', `计数: ${reviewsCount}`);
-      }
-    }
-
-    // 3.4 测试评分范围验证
-    try {
-      await axios.post(
-        `${BASE_URL}/api/agents/${testAgentId}/rate`,
-        {
-          rating: 6,
-          comment: '无效评分测试',
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      testFail('评分范围验证失败', '应拒绝无效评分');
-    } catch (error) {
-      const errorMsg = error.response?.data?.error?.message || '';
-      if (errorMsg.includes('between 1 and 5') || errorMsg.includes('already reviewed')) {
-        testPass('评分范围验证正常');
-      } else {
-        testFail('评分范围验证失败', errorMsg);
-      }
-    }
+    await dbQuery('SELECT 1')
+    testPass('数据库连接', `${DB_CONFIG.host}:${DB_CONFIG.port}/${DB_CONFIG.database}`)
   } catch (error) {
-    testFail('评分统计测试失败', error.message);
+    testFail('数据库连接', error.message)
   }
-};
 
-// 测试 4: 集成测试
-const testIntegration = async (token, testAgentId) => {
-  log.info('=== 测试 4: 集成测试 ===');
-
-  try {
-    // 4.1 获取 Agent 列表
-    const agentsList = await axios.get(`${BASE_URL}/api/agents?page=1&pageSize=10`);
-    const agentsCount = agentsList.data.data.agents.length;
-
-    if (agentsCount > 0) {
-      testPass(`Agent 列表获取成功 (共 ${agentsCount} 个)`);
-    } else {
-      testFail('Agent 列表为空', `数量: ${agentsCount}`);
+  if (FRONTEND_URL) {
+    try {
+      const proxy = await request('get', `${FRONTEND_URL}/api/agents?pageSize=1`)
+      ensure(proxy.status === 200, `Frontend proxy returned ${proxy.status}`)
+      ensure(parseJson(proxy).success === true, 'Frontend proxy payload missing success=true')
+      testPass('前端 /api 代理', `${FRONTEND_URL}/api/agents?pageSize=1 -> 200`)
+    } catch (error) {
+      testFail('前端 /api 代理', error.message)
     }
-
-    // 4.2 获取 Agent 详情
-    const agentDetail = await axios.get(`${BASE_URL}/api/agents/${testAgentId}`);
-    const agentName = agentDetail.data.data.name;
-
-    if (agentName) {
-      testPass(`Agent 详情获取成功 (名称: ${agentName})`);
-    } else {
-      testFail('Agent 详情获取失败', JSON.stringify(agentDetail.data));
-    }
-
-    // 4.3 获取评价列表
-    const reviewsList = await axios.get(`${BASE_URL}/api/agents/${testAgentId}/reviews`);
-
-    if (reviewsList.data.success) {
-      testPass('评价列表获取成功');
-    } else {
-      testFail('评价列表获取失败', JSON.stringify(reviewsList.data));
-    }
-
-    // 4.4 验证数据一致性
-    const dbResult = await dbQuery(
-      `SELECT downloads_count FROM agents WHERE id = '${testAgentId}'`
-    );
-    const dbDownloads = dbResult[0].downloads_count;
-    const apiDownloads = agentDetail.data.data.downloads_count;
-
-    if (dbDownloads === apiDownloads) {
-      testPass(`下载计数数据一致 (DB: ${dbDownloads}, API: ${apiDownloads})`);
-    } else {
-      testFail('下载计数数据不一致', `DB: ${dbDownloads}, API: ${apiDownloads}`);
-    }
-  } catch (error) {
-    testFail('集成测试失败', error.message);
-  }
-};
-
-// 生成测试报告
-const generateReport = () => {
-  console.log('\n=========================================');
-  console.log('           测试报告');
-  console.log('=========================================');
-  console.log(`总测试数: ${totalTests}`);
-  console.log(`通过: ${colors.green}${passedTests}${colors.reset}`);
-  console.log(`失败: ${colors.red}${failedTests}${colors.reset}`);
-  console.log(`成功率: ${((passedTests / totalTests) * 100).toFixed(2)}%`);
-  console.log('=========================================');
-
-  if (failedTests === 0) {
-    console.log(`${colors.green}所有测试通过！${colors.reset}`);
-    return 0;
   } else {
-    console.log(`${colors.red}存在失败的测试，请检查日志${colors.reset}`);
-    return 1;
+    log.warn('未设置 FRONTEND_URL，跳过前端代理检查')
   }
-};
+}
 
-// 主函数
-const main = async () => {
-  console.log('=========================================');
-  console.log('    OpenCLEW 自动化测试');
-  console.log('=========================================\n');
+async function runUnitLikeChecks() {
+  log.section('单元级纯函数检查')
+
+  const testsDir = path.dirname(fileURLToPath(import.meta.url))
+  const moduleUrl = pathToFileURL(path.join(testsDir, '../backend/runtime/trial/llmSandboxConfig.js')).href
+  const streamEventsModuleUrl = pathToFileURL(
+    path.join(testsDir, '../backend/runtime/trial/streamEvents.js')
+  ).href
+  const { buildTrialSandboxLlmEnv, buildTrialSandboxLlmMetadata } = await import(moduleUrl)
+  const {
+    classifyOpenClawOutputLine,
+    flushOpenClawGatewaySseBuffer,
+    mapOpenClawGatewayEvent,
+  } = await import(streamEventsModuleUrl)
 
   try {
-    await checkServices();
-    const { token, userId, testAgentId, testUser } = await setupTestData();
-
-    await testDownloadAPI(token, testAgentId);
-    await testDownloadStatistics(token, userId, testAgentId);
-    await testRatingStatistics(token, userId, testAgentId);
-    await testIntegration(token, testAgentId);
-
-    const exitCode = generateReport();
-    await pool.end();
-    process.exit(exitCode);
+    const env = buildTrialSandboxLlmEnv({
+      provider_name: 'openai',
+      api_url: 'https://api.example.com/v1/chat/completions',
+      api_key: 'Bearer sk-demo',
+      model_id: 'gpt-4o',
+      max_tokens: 2048,
+      temperature: 0.2,
+      auth_type: 'bearer',
+    })
+    ensure(env.TRIAL_LLM_API_URL === 'https://api.example.com/v1', 'OpenAI URL suffix was not stripped')
+    ensure(env.TRIAL_LLM_API_KEY === 'sk-demo', 'Bearer token was not sanitized')
+    ensure(env.TRIAL_LLM_MODEL_ID === 'gpt-4o', 'Model id mismatch')
+    testPass('OpenAI trial config mapping')
   } catch (error) {
-    log.error('测试执行失败: ' + error.message);
-    await pool.end();
-    process.exit(1);
+    testFail('OpenAI trial config mapping', error.message)
   }
-};
 
-// 执行测试
-main();
+  try {
+    const env = buildTrialSandboxLlmEnv({
+      provider_name: 'anthropic',
+      api_url: 'https://api.anthropic.com/v1/messages',
+      api_key: 'test-key',
+      model_id: 'claude-sonnet',
+      max_tokens: 1024,
+      temperature: 0.5,
+      auth_type: 'x-api-key',
+    })
+    ensure(env.TRIAL_LLM_API_URL === 'https://api.anthropic.com/v1', 'Anthropic URL suffix was not stripped')
+    ensure(env.TRIAL_LLM_AUTH_TYPE === 'x-api-key', 'Anthropic auth type mismatch')
+    testPass('Anthropic trial config mapping')
+  } catch (error) {
+    testFail('Anthropic trial config mapping', error.message)
+  }
+
+  try {
+    process.env.TRIAL_LLM_MODEL_OVERRIDE = 'gpt-4.1-mini'
+    process.env.TRIAL_LLM_MAX_TOKENS_OVERRIDE = '1200'
+    process.env.TRIAL_LLM_TEMPERATURE_OVERRIDE = '0.1'
+
+    const env = buildTrialSandboxLlmEnv({
+      provider_name: 'openai',
+      api_url: 'https://api.example.com/v1/chat/completions',
+      api_key: 'Bearer sk-demo',
+      model_id: 'gpt-4o',
+      max_tokens: 2048,
+      temperature: 0.7,
+      auth_type: 'bearer',
+    })
+
+    ensure(env.TRIAL_LLM_MODEL_ID === 'gpt-4.1-mini', 'Trial model override did not apply')
+    ensure(env.TRIAL_LLM_MAX_TOKENS === '1200', 'Trial max tokens override did not apply')
+    ensure(env.TRIAL_LLM_TEMPERATURE === '0.1', 'Trial temperature override did not apply')
+    testPass('Trial sandbox env overrides')
+  } catch (error) {
+    testFail('Trial sandbox env overrides', error.message)
+  } finally {
+    delete process.env.TRIAL_LLM_MODEL_OVERRIDE
+    delete process.env.TRIAL_LLM_MAX_TOKENS_OVERRIDE
+    delete process.env.TRIAL_LLM_TEMPERATURE_OVERRIDE
+  }
+
+  try {
+    const metadata = buildTrialSandboxLlmMetadata({
+      id: 'cfg-1',
+      provider_name: 'openai',
+      api_url: 'https://api.example.com/v1/chat/completions',
+      api_key: 'sk-demo',
+      model_id: 'gpt-4o-mini',
+      auth_type: 'bearer',
+    })
+    ensure(metadata.api_url === 'https://api.example.com/v1', 'Metadata URL stripping failed')
+    ensure(metadata.model_id === 'gpt-4o-mini', 'Metadata model mismatch')
+    testPass('Trial config metadata mapping')
+  } catch (error) {
+    testFail('Trial config metadata mapping', error.message)
+  }
+
+  try {
+    const mapped = classifyOpenClawOutputLine(
+      '[agent/embedded] embedded run agent start: runId=demo'
+    )
+    ensure(mapped?.type === 'status', 'OpenClaw status line should map to status event')
+    ensure(mapped?.stage === 'model-call', 'OpenClaw status stage mismatch')
+
+    const ignored = classifyOpenClawOutputLine(
+      '[diagnostic] lane enqueue: lane=session:test queueSize=1'
+    )
+    ensure(ignored === null, 'Diagnostic queue line should be ignored')
+    testPass('OpenClaw 流式事件映射')
+  } catch (error) {
+    testFail('OpenClaw 流式事件映射', error.message)
+  }
+
+  try {
+    const mappedDelta = mapOpenClawGatewayEvent({
+      type: 'response.output_text.delta',
+      delta: '你好',
+    })
+    ensure(mappedDelta?.type === 'delta', 'Gateway delta event should map to delta')
+    ensure(mappedDelta?.delta === '你好', 'Gateway delta payload mismatch')
+
+    const receivedEvents = []
+    flushOpenClawGatewaySseBuffer(
+      { buffer: '', seenEvent: false },
+      'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"世界"}\n\n',
+      (event) => receivedEvents.push(event)
+    )
+    ensure(receivedEvents.length === 1, 'Gateway SSE buffer should emit one event')
+    ensure(receivedEvents[0]?.type === 'delta', 'Gateway SSE emitted unexpected event type')
+    ensure(receivedEvents[0]?.delta === '世界', 'Gateway SSE delta mismatch')
+    testPass('OpenClaw Gateway SSE 映射')
+  } catch (error) {
+    testFail('OpenClaw Gateway SSE 映射', error.message)
+  }
+}
+
+async function registerTestUser() {
+  const timestamp = Date.now()
+  const credentials = {
+    username: `qa_${timestamp}`,
+    email: `qa_${timestamp}@clewopen.local`,
+    password: 'Test123456',
+  }
+
+  const response = await request('post', `${BASE_URL}/api/auth/register`, {
+    data: credentials,
+  })
+  ensure(response.status === 201, `Registration returned ${response.status}`)
+  const payload = parseJson(response)
+  ensure(payload.success === true, 'Registration success flag missing')
+
+  return {
+    credentials,
+    token: payload.data.token,
+    user: payload.data.user,
+  }
+}
+
+async function loginAdmin() {
+  const response = await request('post', `${BASE_URL}/api/auth/login`, {
+    data: {
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+    },
+  })
+
+  ensure(response.status === 200, `Admin login returned ${response.status}`)
+  const payload = parseJson(response)
+  ensure(payload.success === true, 'Admin login success flag missing')
+  return payload.data
+}
+
+async function fetchCatalog() {
+  const [agentsRes, skillsRes, mcpsRes] = await Promise.all([
+    request('get', `${BASE_URL}/api/agents?pageSize=20`),
+    request('get', `${BASE_URL}/api/skills?pageSize=20`),
+    request('get', `${BASE_URL}/api/mcps?pageSize=20`),
+  ])
+
+  const agents = parseJson(agentsRes).data.agents
+  const skills = parseJson(skillsRes).data.items
+  const mcps = parseJson(mcpsRes).data.items
+
+  ensure(Array.isArray(agents) && agents.length > 0, 'No approved agents found')
+  ensure(Array.isArray(skills) && skills.length > 0, 'No approved skills found')
+  ensure(Array.isArray(mcps) && mcps.length > 0, 'No approved mcps found')
+
+  return {
+    agents,
+    skills,
+    mcps,
+    trialAgent:
+      agents.find((agent) => String(agent.package_url || '').includes('example-session-agent')) ||
+      agents[0],
+  }
+}
+
+async function testCatalogEndpoints(catalog) {
+  log.section('目录和详情接口')
+
+  for (const [name, items] of [
+    ['Agent 列表', catalog.agents],
+    ['Skill 列表', catalog.skills],
+    ['MCP 列表', catalog.mcps],
+  ]) {
+    if (items.length > 0) {
+      testPass(name, `数量=${items.length}`)
+    } else {
+      testFail(name, '列表为空')
+    }
+  }
+
+  const checks = [
+    ['Agent 详情', `${BASE_URL}/api/agents/${catalog.agents[0].id}`],
+    ['Skill 详情', `${BASE_URL}/api/skills/${catalog.skills[0].id}`],
+    ['MCP 详情', `${BASE_URL}/api/mcps/${catalog.mcps[0].id}`],
+  ]
+
+  for (const [label, url] of checks) {
+    try {
+      const response = await request('get', url)
+      ensure(response.status === 200, `${label} returned ${response.status}`)
+      const payload = parseJson(response)
+      ensure(payload.success === true, `${label} success flag missing`)
+      testPass(label)
+    } catch (error) {
+      testFail(label, error.message)
+    }
+  }
+}
+
+async function testAdminRoutes(adminToken) {
+  log.section('管理员接口')
+  const headers = { Authorization: `Bearer ${adminToken}` }
+
+  const routeChecks = [
+    ['LLM 配置列表', `${BASE_URL}/api/admin/llm-configs`],
+    ['同步状态', `${BASE_URL}/api/admin/sync-status`],
+    ['同步历史', `${BASE_URL}/api/admin/sync-history`],
+  ]
+
+  for (const [label, url] of routeChecks) {
+    try {
+      const response = await request('get', url, { headers })
+      ensure(response.status === 200, `${label} returned ${response.status}`)
+      ensure(parseJson(response).success === true, `${label} success flag missing`)
+      testPass(label)
+    } catch (error) {
+      testFail(label, error.message)
+    }
+  }
+
+  try {
+    const configsResponse = await request('get', `${BASE_URL}/api/admin/llm-configs`, { headers })
+    const configs = parseJson(configsResponse).data
+    ensure(Array.isArray(configs) && configs.length > 0, 'No LLM configs returned')
+    const active = configs.find((item) => item.is_active) || configs[0]
+    const healthResponse = await request('post', `${BASE_URL}/api/admin/llm-configs/${active.id}/health-check`, {
+      headers,
+      data: { message: 'Reply with exactly: HEALTHCHECK_OK' },
+      timeout: TRIAL_TIMEOUT_MS,
+    })
+    ensure(healthResponse.status === 200, `Health check returned ${healthResponse.status}`)
+    const payload = parseJson(healthResponse)
+    ensure(String(payload.data.response || '').includes('HEALTHCHECK_OK'), 'Health check reply mismatch')
+    testPass('LLM 配置健康检查')
+  } catch (error) {
+    testFail('LLM 配置健康检查', error.message)
+  }
+}
+
+function getResourceTable(resourceType) {
+  if (resourceType === 'agent') return 'agents'
+  if (resourceType === 'skill') return 'skills'
+  return 'mcps'
+}
+
+function getResourceApiPath(resourceType) {
+  if (resourceType === 'agent') return 'agents'
+  if (resourceType === 'skill') return 'skills'
+  return 'mcps'
+}
+
+function isExternalResource(item) {
+  return String(item?.source_type || '') === 'external'
+}
+
+async function testExternalResourceFlow(resourceType, item, token) {
+  const table = getResourceTable(resourceType)
+  const apiPath = getResourceApiPath(resourceType)
+  const headers = { Authorization: `Bearer ${token}` }
+
+  const beforeDownloads = await dbQuery(`SELECT downloads_count FROM ${table} WHERE id = $1`, [item.id])
+  const beforeDownloadCount = Number(beforeDownloads.rows[0]?.downloads_count || 0)
+  const beforeVisits = await dbQuery(
+    `SELECT COUNT(*)::int AS count FROM resource_visits WHERE resource_id = $1 AND resource_type = $2`,
+    [item.id, resourceType]
+  )
+  const beforeVisitCount = Number(beforeVisits.rows[0]?.count || 0)
+
+  const downloadResponse = await request('post', `${BASE_URL}/api/${apiPath}/${item.id}/download`, {
+    headers,
+  })
+
+  ensure(downloadResponse.status === 409, `External download returned ${downloadResponse.status}`)
+  const downloadPayload = parseJson(downloadResponse)
+  ensure(downloadPayload.success === false, 'External download should return success=false')
+  ensure(downloadPayload.error?.code === 'EXTERNAL_RESOURCE', 'External download error code mismatch')
+  ensure(downloadPayload.error?.external_url === item.external_url, 'External download external_url mismatch')
+  ensure(downloadPayload.error?.source_platform === item.source_platform, 'External download source_platform mismatch')
+
+  const afterDownloads = await dbQuery(`SELECT downloads_count FROM ${table} WHERE id = $1`, [item.id])
+  const afterDownloadCount = Number(afterDownloads.rows[0]?.downloads_count || 0)
+  ensure(afterDownloadCount === beforeDownloadCount, 'downloads_count should not change for external resource')
+
+  const visitResponse = await request('post', `${BASE_URL}/api/${apiPath}/${item.id}/visit`)
+  ensure(visitResponse.status === 200, `External visit returned ${visitResponse.status}`)
+  const visitPayload = parseJson(visitResponse)
+  ensure(visitPayload.success === true, 'External visit should return success=true')
+  ensure(visitPayload.data?.external_url === item.external_url, 'External visit external_url mismatch')
+  ensure(visitPayload.data?.source_platform === item.source_platform, 'External visit source_platform mismatch')
+
+  await sleep(300)
+
+  const afterVisits = await dbQuery(
+    `SELECT COUNT(*)::int AS count FROM resource_visits WHERE resource_id = $1 AND resource_type = $2`,
+    [item.id, resourceType]
+  )
+  const afterVisitCount = Number(afterVisits.rows[0]?.count || 0)
+  ensure(afterVisitCount === beforeVisitCount + 1, `resource_visits expected ${beforeVisitCount + 1}, got ${afterVisitCount}`)
+
+  testPass(
+    `${resourceType} 外部资源访问`,
+    `download=409 visit ${beforeVisitCount} -> ${afterVisitCount} platform=${item.source_platform}`
+  )
+}
+
+async function testDownloadFlow(resourceType, item, token, userId) {
+  log.section(`${resourceType} 下载和数据一致性`)
+  const table = getResourceTable(resourceType)
+  const apiPath = getResourceApiPath(resourceType)
+  const headers = { Authorization: `Bearer ${token}` }
+
+  try {
+    if (isExternalResource(item)) {
+      await testExternalResourceFlow(resourceType, item, token)
+      return
+    }
+
+    const before = await dbQuery(`SELECT downloads_count FROM ${table} WHERE id = $1`, [item.id])
+    const beforeCount = Number(before.rows[0]?.downloads_count || 0)
+
+    const response = await request('post', `${BASE_URL}/api/${apiPath}/${item.id}/download`, {
+      headers,
+      responseType: 'arraybuffer',
+      timeout: REQUEST_TIMEOUT_MS,
+    })
+
+    ensure(response.status === 200, `Download returned ${response.status}`)
+    ensure(Number(response.data?.byteLength || response.data?.length || 0) > 0, 'Downloaded body is empty')
+    ensure(
+      String(response.headers['content-disposition'] || '').toLowerCase().includes('attachment'),
+      'Content-Disposition is not attachment'
+    )
+
+    await sleep(300)
+
+    const after = await dbQuery(
+      `SELECT downloads_count FROM ${table} WHERE id = $1`,
+      [item.id]
+    )
+    const afterCount = Number(after.rows[0]?.downloads_count || 0)
+    ensure(afterCount === beforeCount + 1, `downloads_count expected ${beforeCount + 1}, got ${afterCount}`)
+
+    const records = await dbQuery(
+      `SELECT COUNT(*)::int AS count
+       FROM downloads
+       WHERE resource_id = $1 AND user_id = $2 AND resource_type = $3`,
+      [item.id, userId, resourceType]
+    )
+    ensure(Number(records.rows[0]?.count || 0) > 0, 'Download record not created')
+
+    testPass(`${resourceType} 下载`, `count ${beforeCount} -> ${afterCount}`)
+  } catch (error) {
+    testFail(`${resourceType} 下载`, error.message)
+  }
+}
+
+async function testRatingFlow(resourceType, item, token, userId) {
+  log.section(`${resourceType} 评分和聚合逻辑`)
+  const table = getResourceTable(resourceType)
+  const apiPath = getResourceApiPath(resourceType)
+  const headers = { Authorization: `Bearer ${token}` }
+  const comment = `自动化测试评价 ${resourceType} ${Date.now()}`
+
+  try {
+    const baseline = await dbQuery(
+      `SELECT rating_average, reviews_count FROM ${table} WHERE id = $1`,
+      [item.id]
+    )
+    const baselineAverage = Number(baseline.rows[0]?.rating_average || 0)
+    const baselineCount = Number(baseline.rows[0]?.reviews_count || 0)
+
+    const response = await request('post', `${BASE_URL}/api/${apiPath}/${item.id}/rate`, {
+      headers,
+      data: {
+        rating: 5,
+        comment,
+      },
+    })
+    ensure(response.status === 200, `Rate returned ${response.status}`)
+    const payload = parseJson(response)
+    const reviewId = payload.data?.review?.id
+    ensure(reviewId, 'Review id missing from response')
+
+    const pendingReview = await dbQuery(
+      `SELECT status FROM reviews WHERE id = $1 AND resource_type = $2`,
+      [reviewId, resourceType]
+    )
+    ensure(pendingReview.rows[0]?.status === 'pending', 'Review is not pending after creation')
+
+    await dbQuery(`UPDATE reviews SET status = 'approved' WHERE id = $1`, [reviewId])
+    await sleep(300)
+
+    const approved = await dbQuery(
+      `SELECT rating_average, reviews_count FROM ${table} WHERE id = $1`,
+      [item.id]
+    )
+    const approvedCount = Number(approved.rows[0]?.reviews_count || 0)
+    const approvedAverage = Number(approved.rows[0]?.rating_average || 0)
+    ensure(approvedCount === baselineCount + 1, `Approved review count expected ${baselineCount + 1}, got ${approvedCount}`)
+    ensure(approvedAverage >= baselineAverage, 'Approved average rating did not update as expected')
+
+    await dbQuery(`UPDATE reviews SET status = 'rejected' WHERE id = $1`, [reviewId])
+    await sleep(300)
+
+    const reverted = await dbQuery(
+      `SELECT rating_average, reviews_count FROM ${table} WHERE id = $1`,
+      [item.id]
+    )
+    const revertedCount = Number(reverted.rows[0]?.reviews_count || 0)
+    ensure(revertedCount === baselineCount, `Reverted review count expected ${baselineCount}, got ${revertedCount}`)
+
+    testPass(`${resourceType} 评分聚合`, `baseline=${baselineCount}, approved=${approvedCount}, reverted=${revertedCount}`)
+  } catch (error) {
+    testFail(`${resourceType} 评分聚合`, error.message)
+  }
+}
+
+async function waitForTrialSessionReady(sessionId, token) {
+  const headers = { Authorization: `Bearer ${token}` }
+  const startedAt = Date.now()
+  let lastStatus = 'unknown'
+
+  while (Date.now() - startedAt < TRIAL_TIMEOUT_MS) {
+    const response = await request('get', `${BASE_URL}/api/trial-sessions/${sessionId}`, {
+      headers,
+      timeout: REQUEST_TIMEOUT_MS,
+    })
+    ensure(response.status === 200, `Poll session returned ${response.status}`)
+    const payload = parseJson(response)
+    lastStatus = payload.data?.session?.status || 'unknown'
+
+    if (lastStatus === 'active') {
+      return {
+        payload,
+        waitDurationMs: Date.now() - startedAt,
+      }
+    }
+
+    if (['failed', 'completed', 'expired'].includes(lastStatus)) {
+      throw new Error(`Trial session became ${lastStatus} before ready`)
+    }
+
+    await sleep(2000)
+  }
+
+  throw new Error(`Trial session did not become active within timeout, lastStatus=${lastStatus}`)
+}
+
+async function testTrialFlow(token, trialAgent, frontendToken) {
+  log.section('Agent 试用会话')
+  const headers = { Authorization: `Bearer ${token}` }
+  const proxyHeaders = { Authorization: `Bearer ${frontendToken || token}` }
+
+  try {
+    const { value: createResponse, durationMs: createDurationMs } = await timed(
+      'trial create latency',
+      () => request('post', `${BASE_URL}/api/agents/${trialAgent.id}/trial-sessions`, {
+        headers,
+        timeout: TRIAL_TIMEOUT_MS,
+      })
+    )
+    ensure(createResponse.status === 201, `Create session returned ${createResponse.status}`)
+    const createPayload = parseJson(createResponse)
+    const sessionId = createPayload.data.sessionId
+    ensure(createPayload.data.runtimeType === 'container', 'Trial session is not using container runtime')
+    const { waitDurationMs } = await waitForTrialSessionReady(sessionId, token)
+
+    const messageBaseUrl = FRONTEND_URL || BASE_URL
+    const { value: sendResponse, durationMs: sendDurationMs } = await timed(
+      'trial send latency',
+      () => streamRequest(`${messageBaseUrl}/api/trial-sessions/${sessionId}/messages/stream`, {
+        method: 'POST',
+        headers: {
+          ...proxyHeaders,
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        data: {
+          message: '请用中文介绍一下你的能力，并给我一个简短示例。',
+        },
+        timeout: TRIAL_TIMEOUT_MS,
+      })
+    )
+    ensure(sendResponse.status === 200, `Send message returned ${sendResponse.status}`)
+    ensure(sendResponse.events.length > 0, 'Stream endpoint returned no events')
+    ensure(
+      sendResponse.events.some((event) => event.event === 'status'),
+      'Stream endpoint did not emit status events'
+    )
+    ensure(
+      sendResponse.events.some(
+        (event) =>
+          event.event === 'status' &&
+          ['gateway-connected', 'prompt-build', 'context-ready', 'model-call', 'model-returned', 'response-build', 'completed'].includes(
+            event.data?.stage
+          )
+      ),
+      'Stream endpoint did not surface OpenClaw runtime stages'
+    )
+    const deltaEvents = sendResponse.events.filter(
+      (event) => event.event === 'delta' && String(event.data?.delta || '').length > 0
+    )
+    ensure(deltaEvents.length > 0, 'Stream endpoint did not emit assistant delta events')
+    const doneEvent = sendResponse.events.find((event) => event.event === 'done')
+    ensure(doneEvent, 'Stream endpoint did not emit done event')
+    ensure(String(doneEvent.data?.response || '').trim().length > 0, 'Trial response is empty')
+    ensure(
+      sendResponse.events.findIndex((event) => event.event === 'delta') !== -1 &&
+        sendResponse.events.findIndex((event) => event.event === 'done') !== -1 &&
+        sendResponse.events.findIndex((event) => event.event === 'delta') <
+          sendResponse.events.findIndex((event) => event.event === 'done'),
+      'Assistant delta events were not observed before completion'
+    )
+    ensure(
+      Number.isFinite(sendResponse.firstEventAtMs) && sendResponse.firstEventAtMs < sendDurationMs,
+      `First stream event was not observed before completion: first=${sendResponse.firstEventAtMs} total=${sendDurationMs}`
+    )
+
+    const getResponse = await request('get', `${BASE_URL}/api/trial-sessions/${sessionId}`, {
+      headers,
+      timeout: TRIAL_TIMEOUT_MS,
+    })
+    ensure(getResponse.status === 200, `Get session returned ${getResponse.status}`)
+    const getPayload = parseJson(getResponse)
+    ensure(Array.isArray(getPayload.data.messages) && getPayload.data.messages.length >= 2, 'Trial session messages are incomplete')
+
+    const dbMessages = await dbQuery(
+      `SELECT COUNT(*)::int AS count FROM trial_session_messages WHERE session_id = $1`,
+      [sessionId]
+    )
+    ensure(Number(dbMessages.rows[0]?.count || 0) >= 2, 'trial_session_messages row count is too small')
+
+    const endResponse = await request('delete', `${messageBaseUrl}/api/trial-sessions/${sessionId}`, {
+      headers: proxyHeaders,
+      timeout: TRIAL_TIMEOUT_MS,
+    })
+    ensure(endResponse.status === 200, `End session returned ${endResponse.status}`)
+    const ended = parseJson(endResponse)
+    ensure(ended.data.status === 'completed', 'Ended session did not become completed')
+
+    testPass(
+      'Agent 试用会话完整链路',
+      `create=${createDurationMs}ms ready=${waitDurationMs}ms firstEvent=${sendResponse.firstEventAtMs}ms send=${sendDurationMs}ms runtime=${createPayload.data.runtimeType}`
+    )
+  } catch (error) {
+    testFail('Agent 试用会话完整链路', error.message)
+  }
+}
+
+async function buildMissingMigrationDiagnostics(missingMigrations) {
+  const diagnostics = []
+
+  if (missingMigrations.includes('006_add_github_fields.sql')) {
+    const [skillColumns, mcpColumns] = await Promise.all([
+      dbQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM information_schema.columns
+         WHERE table_name = 'skills'
+           AND column_name IN ('github_stars', 'github_url', 'author_avatar_url')`
+      ),
+      dbQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM information_schema.columns
+         WHERE table_name = 'mcps'
+           AND column_name IN ('github_stars', 'github_url', 'author_avatar_url')`
+      ),
+    ])
+    diagnostics.push(
+      `006 github columns skills=${skillColumns.rows[0]?.count || 0}/3 mcps=${mcpColumns.rows[0]?.count || 0}/3`
+    )
+  }
+
+  if (missingMigrations.includes('007_remove_pricing_and_orders.sql')) {
+    const [ordersTable, agentPricingColumns, skillPricingColumns, mcpPricingColumns] = await Promise.all([
+      dbQuery(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'orders') AS exists`),
+      dbQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM information_schema.columns
+         WHERE table_name = 'agents'
+           AND column_name IN ('price_type', 'price_amount', 'price_currency', 'billing_period')`
+      ),
+      dbQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM information_schema.columns
+         WHERE table_name = 'skills'
+           AND column_name IN ('price_type', 'price_amount', 'price_currency', 'billing_period')`
+      ),
+      dbQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM information_schema.columns
+         WHERE table_name = 'mcps'
+           AND column_name IN ('price_type', 'price_amount', 'price_currency', 'billing_period')`
+      ),
+    ])
+    diagnostics.push(
+      `007 orders_exists=${ordersTable.rows[0]?.exists ? 'true' : 'false'} pricing_columns=${agentPricingColumns.rows[0]?.count || 0}/${skillPricingColumns.rows[0]?.count || 0}/${mcpPricingColumns.rows[0]?.count || 0}`
+    )
+  }
+
+  if (missingMigrations.includes('008_create_trial_and_llm_config.sql')) {
+    const trialTables = await dbQuery(
+      `SELECT table_name
+       FROM information_schema.tables
+       WHERE table_name IN ('agent_trials', 'llm_configs')
+       ORDER BY table_name`
+    )
+    diagnostics.push(`008 tables=${trialTables.rows.map((row) => row.table_name).join(',')}`)
+  }
+
+  if (missingMigrations.includes('010_create_trial_sessions.sql')) {
+    const [sessionTables, sessionTrigger] = await Promise.all([
+      dbQuery(
+        `SELECT table_name
+         FROM information_schema.tables
+         WHERE table_name IN ('trial_sessions', 'trial_session_messages')
+         ORDER BY table_name`
+      ),
+      dbQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM pg_trigger
+         WHERE NOT tgisinternal
+           AND tgname = 'update_trial_sessions_updated_at'`
+      ),
+    ])
+    diagnostics.push(
+      `010 tables=${sessionTables.rows.map((row) => row.table_name).join(',')} trigger=${sessionTrigger.rows[0]?.count || 0}`
+    )
+  }
+
+  return diagnostics.join('; ')
+}
+
+async function testMigrationsAndCounts() {
+  log.section('迁移和数据面检查')
+
+  try {
+    const testsDir = path.dirname(fileURLToPath(import.meta.url))
+    const migrationsDir = path.join(testsDir, '../backend/migrations')
+    const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith('.sql')).sort()
+    const executed = await dbQuery('SELECT name FROM migrations ORDER BY name')
+    const executedNames = new Set(executed.rows.map((row) => row.name))
+    const missingMigrations = files.filter((file) => !executedNames.has(file))
+    const extraMigrations = executed.rows.map((row) => row.name).filter((name) => !files.includes(name))
+
+    if (missingMigrations.length > 0 || extraMigrations.length > 0) {
+      const diagnostics = await buildMissingMigrationDiagnostics(missingMigrations)
+      const parts = []
+      if (missingMigrations.length > 0) parts.push(`missing=[${missingMigrations.join(', ')}]`)
+      if (extraMigrations.length > 0) parts.push(`extra=[${extraMigrations.join(', ')}]`)
+      if (diagnostics) parts.push(`schema=${diagnostics}`)
+      throw new Error(parts.join('; '))
+    }
+
+    testPass('迁移执行数量一致', `${executed.rows.length} / ${files.length}`)
+  } catch (error) {
+    testFail('迁移执行数量一致', error.message)
+  }
+
+  try {
+    const [syncCounts, dbCounts] = await Promise.all([
+      request('get', `${BASE_URL}/api/admin/sync-status`, {
+        headers: {
+          Authorization: `Bearer ${(
+            await loginAdmin()
+          ).token}`,
+        },
+      }),
+      Promise.all([
+        dbQuery(`SELECT COUNT(*)::int AS count FROM skills WHERE deleted_at IS NULL`),
+        dbQuery(`SELECT COUNT(*)::int AS count FROM mcps WHERE deleted_at IS NULL`),
+      ]),
+    ])
+    const syncPayload = parseJson(syncCounts)
+    const skillCount = Number(dbCounts[0].rows[0]?.count || 0)
+    const mcpCount = Number(dbCounts[1].rows[0]?.count || 0)
+    ensure(syncPayload.data.totalSkills === skillCount, 'sync-status totalSkills mismatch')
+    ensure(syncPayload.data.totalMcps === mcpCount, 'sync-status totalMcps mismatch')
+    testPass('sync-status 与数据库计数一致')
+  } catch (error) {
+    testFail('sync-status 与数据库计数一致', error.message)
+  }
+}
+
+async function performanceProbe(label, url, iterations = 5) {
+  const durations = []
+
+  for (let index = 0; index < iterations; index += 1) {
+    const startedAt = Date.now()
+    const response = await request('get', url)
+    ensure(response.status === 200, `${label} iteration ${index + 1} returned ${response.status}`)
+    durations.push(Date.now() - startedAt)
+  }
+
+  durations.sort((a, b) => a - b)
+  const avg = Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+  const median = durations[Math.floor(durations.length / 2)]
+  const max = durations[durations.length - 1]
+
+  return { avg, median, max }
+}
+
+async function runPerformanceChecks() {
+  log.section('轻量性能探针')
+
+  const probes = [
+    ['health', `${BASE_URL}/health`, 5, 200],
+    ['agents', `${BASE_URL}/api/agents?pageSize=1`, 5, 500],
+    ['skills', `${BASE_URL}/api/skills?pageSize=1`, 5, 500],
+    ['mcps', `${BASE_URL}/api/mcps?pageSize=1`, 5, 500],
+  ]
+
+  if (FRONTEND_URL) {
+    probes.push(['frontend-proxy-agents', `${FRONTEND_URL}/api/agents?pageSize=1`, 5, 800])
+  }
+
+  for (const [label, url, iterations, threshold] of probes) {
+    try {
+      const stats = await performanceProbe(label, url, iterations)
+      ensure(stats.avg <= threshold, `${label} avg ${stats.avg}ms exceeds ${threshold}ms`)
+      testPass(`性能 ${label}`, `avg=${stats.avg}ms median=${stats.median}ms max=${stats.max}ms`)
+    } catch (error) {
+      testFail(`性能 ${label}`, error.message)
+    }
+  }
+}
+
+function summarize() {
+  console.log('\n=========================================')
+  console.log('        OpenCLEW 项目验证报告')
+  console.log('=========================================')
+  console.log(`BASE_URL: ${BASE_URL}`)
+  console.log(`FRONTEND_URL: ${FRONTEND_URL || '(skipped)'}`)
+  console.log(`总测试数: ${totalTests}`)
+  console.log(`通过: ${colors.green}${passedTests}${colors.reset}`)
+  console.log(`失败: ${colors.red}${failedTests}${colors.reset}`)
+  console.log(`成功率: ${totalTests > 0 ? ((passedTests / totalTests) * 100).toFixed(2) : '0.00'}%`)
+  console.log('=========================================')
+
+  if (failures.length > 0) {
+    console.log(`${colors.red}失败项:${colors.reset}`)
+    for (const failure of failures) {
+      console.log(`- ${failure.name}: ${failure.reason}`)
+    }
+  }
+
+  return failedTests === 0 ? 0 : 1
+}
+
+async function main() {
+  console.log('=========================================')
+  console.log('   OpenCLEW 综合验证脚本')
+  console.log('=========================================')
+
+  try {
+    await checkServices()
+    await runUnitLikeChecks()
+
+    const [admin, testUser, catalog] = await Promise.all([
+      loginAdmin(),
+      registerTestUser(),
+      fetchCatalog(),
+    ])
+
+    await testCatalogEndpoints(catalog)
+    await testAdminRoutes(admin.token)
+    await testDownloadFlow('agent', catalog.agents[0], testUser.token, testUser.user.id)
+    await testDownloadFlow('skill', catalog.skills[0], testUser.token, testUser.user.id)
+    await testDownloadFlow('mcp', catalog.mcps[0], testUser.token, testUser.user.id)
+    await testRatingFlow('agent', catalog.agents[0], testUser.token, testUser.user.id)
+    await testRatingFlow('skill', catalog.skills[0], testUser.token, testUser.user.id)
+    await testRatingFlow('mcp', catalog.mcps[0], testUser.token, testUser.user.id)
+    await testTrialFlow(testUser.token, catalog.trialAgent, testUser.token)
+    await testMigrationsAndCounts()
+    await runPerformanceChecks()
+  } catch (error) {
+    log.error(`测试执行中断: ${error.stack || error.message}`)
+    testFail('测试执行中断', error.message)
+  } finally {
+    const exitCode = summarize()
+    await pool.end()
+    process.exit(exitCode)
+  }
+}
+
+main()
