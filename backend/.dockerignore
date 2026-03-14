@@ -1,0 +1,9 @@
+node_modules
+.trial-runtime
+storage
+uploads
+logs
+.env
+npm-debug.log*
+README.md
+docs

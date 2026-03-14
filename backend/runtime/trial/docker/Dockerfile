@@ -18,17 +18,18 @@ RUN if [ "${SKIP_OS_BOOTSTRAP}" != "1" ]; then \
 
 RUN mkdir -p /opt/openclew/bin /opt/openclew/template /workspace/agent /workspace/state /workspace/logs /workspace/artifacts
 
-COPY session-runner.sh /opt/openclew/bin/session-runner.sh
-COPY template/workspace /opt/openclew/template/workspace
-
-RUN chmod +x /opt/openclew/bin/session-runner.sh \
-  && if [ -n "${OPENCLEW_INSTALL_COMMAND}" ]; then bash -lc "${OPENCLEW_INSTALL_COMMAND}"; fi \
+RUN if [ -n "${OPENCLEW_INSTALL_COMMAND}" ]; then bash -lc "${OPENCLEW_INSTALL_COMMAND}"; fi \
   && if command -v openclew >/dev/null 2>&1; then ln -sf "$(command -v openclew)" /usr/local/bin/openclew-cli; \
      elif command -v openclaw >/dev/null 2>&1; then ln -sf "$(command -v openclaw)" /usr/local/bin/openclew-cli; \
      elif command -v clewopen >/dev/null 2>&1; then ln -sf "$(command -v clewopen)" /usr/local/bin/openclew-cli; \
      else printf '%s\n' '#!/bin/sh' 'echo "OpenCLEW CLI is not installed in this image" >&2' 'exit 127' > /usr/local/bin/openclew-cli \
        && chmod +x /usr/local/bin/openclew-cli; \
-     fi \
+     fi
+
+COPY session-runner.sh /opt/openclew/bin/session-runner.sh
+COPY template/workspace /opt/openclew/template/workspace
+
+RUN chmod +x /opt/openclew/bin/session-runner.sh \
   && mkdir -p /opt/openclew/template/home/.openclaw
 
 ARG TRIAL_RUNTIME_TEMPLATE_HASH=dev
