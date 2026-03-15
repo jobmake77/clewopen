@@ -43,8 +43,11 @@ export const trialAgent = async (req, res, next) => {
     let agentFiles
     try {
       agentFiles = await extractAgentFiles(agent.package_url)
-    } catch {
-      return res.status(500).json({ success: false, error: '无法读取 Agent 配置文件' })
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: error.message || '无法读取 Agent 配置文件',
+      })
     }
 
     const systemParts = []

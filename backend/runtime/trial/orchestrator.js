@@ -16,6 +16,7 @@ import {
 } from './sandbox/poolManager.js'
 import { buildSessionWorkspace, loadSessionWorkspaceFiles } from './sessionBuilder.js'
 import { runPromptSession } from './promptRunner.js'
+import { ensureAgentPackageUsable } from '../../utils/agentPackageReader.js'
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
 const MAX_TRIALS = 3
@@ -426,6 +427,8 @@ export async function createTrialSession({ userId, agentId }) {
     err.statusCode = 403
     throw err
   }
+
+  await ensureAgentPackageUsable(agent.package_url)
 
   const usedCount = await TrialSessionModel.countUserTrials(userId, agentId)
   if (usedCount >= MAX_TRIALS) {

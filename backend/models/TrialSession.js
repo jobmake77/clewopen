@@ -3,7 +3,19 @@ import { query } from '../config/database.js'
 const TrialSessionModel = {
   async countUserTrials(userId, agentId) {
     const result = await query(
-      'SELECT COUNT(*) AS count FROM trial_sessions WHERE user_id = $1 AND agent_id = $2',
+      `SELECT COUNT(*) AS count
+       FROM trial_sessions ts
+       WHERE ts.user_id = $1
+         AND ts.agent_id = $2
+         AND (
+           ts.status IN ('provisioning', 'active', 'cleaning')
+           OR EXISTS (
+             SELECT 1
+             FROM trial_session_messages tsm
+             WHERE tsm.session_id = ts.id
+               AND tsm.role = 'user'
+           )
+         )`,
       [userId, agentId]
     )
     return parseInt(result.rows[0].count, 10)

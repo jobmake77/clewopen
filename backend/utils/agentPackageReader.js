@@ -14,9 +14,28 @@ const FILE_MAP = {
   readme: ['README.md'],
 }
 
+function createAgentPackageError(message, statusCode = 422, code = 'agent_package_invalid') {
+  const error = new Error(message)
+  error.statusCode = statusCode
+  error.code = code
+  return error
+}
+
 export function resolveAgentPackagePath(packageUrl) {
   const backendRoot = path.resolve(__dirname, '..')
   return path.join(backendRoot, packageUrl)
+}
+
+function openAgentZip(filePath) {
+  try {
+    return new AdmZip(filePath)
+  } catch (error) {
+    throw createAgentPackageError(
+      'Agent 包不是有效的 zip 文件，暂时无法预览或试用，请联系管理员重新上传。',
+      422,
+      'agent_package_invalid_zip'
+    )
+  }
 }
 
 /**
@@ -27,9 +46,17 @@ export function resolveAgentPackagePath(packageUrl) {
 export async function extractAgentFiles(packageUrl) {
   const filePath = resolveAgentPackagePath(packageUrl)
 
-  await fs.access(filePath) // throws if file doesn't exist
+  try {
+    await fs.access(filePath)
+  } catch {
+    throw createAgentPackageError(
+      'Agent 包文件不存在，暂时无法预览或试用。',
+      404,
+      'agent_package_missing'
+    )
+  }
 
-  const zip = new AdmZip(filePath)
+  const zip = openAgentZip(filePath)
   const entries = zip.getEntries()
 
   const result = {}
@@ -50,4 +77,9 @@ export async function extractAgentFiles(packageUrl) {
   }
 
   return result
+}
+
+export async function ensureAgentPackageUsable(packageUrl) {
+  await extractAgentFiles(packageUrl)
+  return true
 }

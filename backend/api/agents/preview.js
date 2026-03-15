@@ -17,15 +17,7 @@ export const getAgentPreview = async (req, res, next) => {
       })
     }
 
-    let result
-    try {
-      result = await extractAgentFiles(agent.package_url)
-    } catch {
-      return res.status(404).json({
-        success: false,
-        error: { message: 'Package file not found' },
-      })
-    }
+    const result = await extractAgentFiles(agent.package_url)
 
     res.json({
       success: true,

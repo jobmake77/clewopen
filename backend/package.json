@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/migrate.js migrate",
     "db:reset": "node scripts/migrate.js reset",
     "db:seed": "node scripts/migrate.js migrate",
+    "agents:seed-packages": "node scripts/generateSeedAgentPackages.js",
     "trial:image:build": "sh runtime/trial/docker/build-trial-base-image.sh",
     "trial:smoke": "node scripts/trialSandboxSmokeTest.js"
   },
