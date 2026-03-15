@@ -330,6 +330,37 @@ export function getPoolSlotIdFromContainerName(containerName) {
   return String(containerName).slice(prefix.length)
 }
 
+export async function listPoolContainerStatuses() {
+  const config = getTrialRuntimeConfig()
+  const result = await runDockerCommandQuietly(
+    [
+      'ps',
+      '-a',
+      '--filter',
+      'label=openclew.pool=true',
+      '--filter',
+      `label=openclew.pool_namespace=${config.poolNamespace}`,
+      '--format',
+      '{{.Names}}|{{.State}}|{{.Status}}|{{.Label "openclew.pool_slot_id"}}',
+    ],
+    { ignoreExitCodes: [1], timeoutMs: 30000 }
+  )
+
+  return result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, state, status, slotId] = line.split('|')
+      return {
+        name,
+        state: state || 'unknown',
+        status: status || '',
+        slotId: slotId || getPoolSlotIdFromContainerName(name),
+      }
+    })
+}
+
 export async function cleanupOrphanedTrialContainers(activeSessionIds = []) {
   const result = await runDockerCommandQuietly(
     [

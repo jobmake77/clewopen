@@ -130,6 +130,21 @@ const TrialSessionModel = {
     return result.rows.map((row) => row.id)
   },
 
+  async listLeaseHealth(sessionIds = []) {
+    if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+      return []
+    }
+
+    const result = await query(
+      `SELECT id, status, expires_at, last_activity_at
+       FROM trial_sessions
+       WHERE id = ANY($1::uuid[])`,
+      [sessionIds]
+    )
+
+    return result.rows
+  },
+
   async listMessages(sessionId) {
     const result = await query(
       `SELECT *

@@ -92,6 +92,8 @@ export function getTrialRuntimeConfig() {
       2
     ),
     poolPrewarmGateway: parseBoolean(process.env.TRIAL_POOL_PREWARM_GATEWAY, false),
+    poolBrokenRetryBaseMs: parsePositiveInt(process.env.TRIAL_POOL_BROKEN_RETRY_BASE_MS, 15000),
+    poolBrokenRetryMaxMs: parsePositiveInt(process.env.TRIAL_POOL_BROKEN_RETRY_MAX_MS, 120000),
     poolRecycleAfterSessions: parsePositiveInt(
       process.env.TRIAL_POOL_RECYCLE_AFTER_SESSIONS,
       30

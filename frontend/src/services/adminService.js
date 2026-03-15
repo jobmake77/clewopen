@@ -95,3 +95,15 @@ export const getSyncHistory = () => {
 export const getTrialRuntimePoolStatus = () => {
   return api.get('/admin/trial-runtime/pool')
 }
+
+export const drainTrialRuntimeSlot = (slotId, reason) => {
+  return api.post(`/admin/trial-runtime/pool/slots/${slotId}/drain`, { reason })
+}
+
+export const recycleTrialRuntimeSlot = (slotId, reason) => {
+  return api.post(`/admin/trial-runtime/pool/slots/${slotId}/recycle`, { reason })
+}
+
+export const getTrialRuntimeSlotLogs = (slotId, params) => {
+  return api.get(`/admin/trial-runtime/pool/slots/${slotId}/logs`, { params })
+}
