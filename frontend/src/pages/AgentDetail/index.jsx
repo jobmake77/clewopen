@@ -121,6 +121,7 @@ function AgentDetail() {
 
   useEffect(() => {
     if (!trialVisible || !trialSessionId) return
+    if (trialSending) return
     if (!shouldPollTrialSession(trialSessionStatus, trialProvisioning?.stage)) return
 
     let cancelled = false
@@ -146,7 +147,7 @@ function AgentDetail() {
         window.clearTimeout(timerId)
       }
     }
-  }, [trialVisible, trialSessionId, trialSessionStatus, trialProvisioning?.stage])
+  }, [trialVisible, trialSessionId, trialSessionStatus, trialProvisioning?.stage, trialSending])
 
   useEffect(() => {
     if (!trialVisible || !trialMessagesRef.current) return
@@ -223,7 +224,10 @@ function AgentDetail() {
         return msg
       }
 
-      if (nextLine.startsWith('正在持续执行中') && lastLine?.startsWith('正在持续执行中')) {
+      if (
+        (nextLine.startsWith('正在持续执行中') && lastLine?.startsWith('正在持续执行中')) ||
+        (nextLine.startsWith('消息已排队，已等待') && lastLine?.startsWith('消息已排队，已等待'))
+      ) {
         currentLines[currentLines.length - 1] = nextLine
       } else {
         currentLines.push(nextLine)
@@ -485,12 +489,30 @@ function AgentDetail() {
   }
 
   const handleTrialSend = async () => {
-    if (!trialInput.trim() || trialSending || remainingTrials <= 0 || !trialSessionId || trialSessionStatus !== 'active') return
+    if (
+      !trialInput.trim() ||
+      trialSending ||
+      remainingTrials <= 0 ||
+      !trialSessionId ||
+      !['active', 'provisioning'].includes(trialSessionStatus)
+    ) {
+      return
+    }
 
     const userMsg = trialInput.trim()
     setTrialInput('')
     appendTrialMessage({ role: 'user', content: userMsg })
-    startStreamingAssistantMessage('消息已发送，正在进入试用沙盒')
+    startStreamingAssistantMessage(
+      trialSessionStatus === 'provisioning'
+        ? '消息已排队，正在等待试用环境就绪'
+        : (
+            trialSessionStatus === 'active' &&
+            Boolean(trialProvisioning?.stage) &&
+            !['ready', 'failed'].includes(trialProvisioning.stage)
+          )
+          ? '消息已发送，正在等待流式引擎完成预热'
+          : '消息已发送，正在进入试用沙盒'
+    )
     setTrialSending(true)
 
     try {
@@ -499,6 +521,13 @@ function AgentDetail() {
       await streamTrialSessionMessage(trialSessionId, userMsg, {
         onEvent: ({ event, data }) => {
           if (event === 'status' || event === 'heartbeat') {
+            if (data?.sessionStatus) {
+              setTrialSessionStatus(data.sessionStatus)
+              setTrialLoaded(data.sessionStatus !== 'provisioning')
+            }
+            if (data?.provisioning) {
+              setTrialProvisioning(data.provisioning)
+            }
             appendStreamingStatusLine(data?.message)
             return
           }
@@ -554,12 +583,18 @@ function AgentDetail() {
     Boolean(trialProvisioning?.stage) &&
     !['ready', 'failed'].includes(trialProvisioning.stage)
   const showTrialProvisioning = isTrialPreparing || isTrialWarming
-  const canSendTrialMessage = remainingTrials > 0 && !!trialInput.trim() && !trialSending && !!trialSessionId && trialSessionStatus === 'active'
+  const canInteractWithTrialSession =
+    !!trialSessionId && ['active', 'provisioning'].includes(trialSessionStatus)
+  const canSendTrialMessage =
+    remainingTrials > 0 &&
+    !!trialInput.trim() &&
+    !trialSending &&
+    canInteractWithTrialSession
   const trialPlaceholder =
     remainingTrials <= 0
       ? '试用次数已用完'
       : isTrialPreparing
-        ? '试用环境准备中，请稍候...'
+        ? '可以先输入问题，消息会在环境就绪后自动发送...'
         : isTrialWarming
           ? '可以先输入问题，后台仍在预热流式引擎，首条回复可能稍慢...'
         : trialSessionStatus === 'failed'
@@ -942,7 +977,7 @@ function AgentDetail() {
           {trialMessages.length === 0 && (
             <div style={{ textAlign: 'center', color: '#999', marginTop: 160 }}>
               {isTrialPreparing
-                ? '试用环境准备中，准备完成后即可开始对话'
+                ? '试用环境准备中，你已经可以先输入问题并提前排队'
                 : isTrialWarming
                   ? '你已经可以输入问题，系统会边预热边开始响应'
                   : trialLoaded
@@ -1002,7 +1037,7 @@ function AgentDetail() {
             onChange={(e) => setTrialInput(e.target.value)}
             onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); handleTrialSend() } }}
             placeholder={trialPlaceholder}
-            disabled={remainingTrials <= 0 || trialSending || !trialSessionId || trialSessionStatus !== 'active'}
+            disabled={remainingTrials <= 0 || trialSending || !canInteractWithTrialSession}
             autoSize={{ minRows: 1, maxRows: 3 }}
             style={{ flex: 1 }}
           />

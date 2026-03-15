@@ -21,11 +21,18 @@ import { ensureAgentPackageUsable } from '../../utils/agentPackageReader.js'
 const DEFAULT_TTL_MS = 10 * 60 * 1000
 const MAX_TRIALS = 3
 const MAX_ACTIVE_SESSIONS_PER_USER = 1
+const PROVISIONING_POLL_INTERVAL_MS = 2000
+const PROVISIONING_PROGRESS_INTERVAL_MS = 5000
 const provisioningTasks = new Map()
+const gatewayWarmupTasks = new Map()
 const activeMessageTasks = new Set()
 
 function computeExpiryDate(ttlMs = DEFAULT_TTL_MS) {
   return new Date(Date.now() + ttlMs)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function shouldUseContainerRuntime() {
@@ -38,6 +45,58 @@ function buildProvisioningState(stage, detail) {
     detail,
     updatedAt: new Date().toISOString(),
   }
+}
+
+function buildSandboxMetadata(workspace) {
+  return {
+    provider: workspace.type,
+    ref: workspace.sandboxRef,
+    ...(workspace.pooled
+      ? {
+          pool: {
+            pooled: true,
+            slot_id: workspace.poolSlotId,
+            namespace: workspace.poolNamespace,
+            runtime_agent_id: workspace.runtimeAgentId,
+          },
+        }
+      : {}),
+  }
+}
+
+function buildSessionReadyDetail(workspace, gatewayWarmup) {
+  if (gatewayWarmup?.status === 'failed') {
+    return '试用环境已就绪，流式引擎将在首条消息时继续启动'
+  }
+
+  if (workspace?.pooled) {
+    return '试用环境已就绪，已命中预热沙盒'
+  }
+
+  return '试用环境已就绪'
+}
+
+function buildSessionWarmupDetail() {
+  return '已命中预热沙盒，正在后台预热流式引擎，你可以先输入问题'
+}
+
+function buildQueuedProvisioningMessage(session, elapsedMs) {
+  const elapsedSeconds = Math.max(1, Math.floor(elapsedMs / 1000))
+  const detail = String(session?.metadata?.provisioning?.detail || '').trim()
+
+  if (detail) {
+    return `消息已排队，已等待 ${elapsedSeconds} 秒，${detail}`
+  }
+
+  return `消息已排队，已等待 ${elapsedSeconds} 秒，正在准备试用环境`
+}
+
+function buildAcceptedExecutionMessage(session) {
+  if (session?.metadata?.provisioning?.stage === 'warming-gateway') {
+    return '消息已接收，正在等待流式引擎完成预热'
+  }
+
+  return '消息已接收，正在启动试用执行'
 }
 
 async function updateSessionProvisioningMetadata(sessionId, stage, detail, metadata = {}) {
@@ -108,7 +167,72 @@ async function runSessionMessageStream(session, files, history, message, onEvent
   return result
 }
 
-async function loadTrialMessageContext(sessionId, userId, rawMessage) {
+async function waitForTrialSessionActivation(
+  session,
+  userId,
+  inFlightProvisioning,
+  onProvisioningProgress
+) {
+  let latestSession = session
+  let lastProgressKey = ''
+  let lastProgressAt = 0
+  const startedAt = Date.now()
+
+  while (true) {
+    if (!latestSession || latestSession.user_id !== userId) {
+      const err = new Error('试用会话不存在')
+      err.statusCode = 404
+      throw err
+    }
+
+    if (latestSession.status === 'failed') {
+      const err = new Error('试用环境准备失败，请重新开始')
+      err.statusCode = 409
+      throw err
+    }
+
+    if (latestSession.status === 'active') {
+      return latestSession
+    }
+
+    if (latestSession.status !== 'provisioning') {
+      const err = new Error('试用环境尚未就绪，请稍后再试')
+      err.statusCode = 409
+      throw err
+    }
+
+    if (typeof onProvisioningProgress === 'function') {
+      const provisioning = latestSession.metadata?.provisioning || null
+      const progressKey = `${latestSession.status}:${provisioning?.stage || ''}:${provisioning?.detail || ''}`
+      const now = Date.now()
+
+      if (
+        progressKey !== lastProgressKey ||
+        now - lastProgressAt >= PROVISIONING_PROGRESS_INTERVAL_MS
+      ) {
+        onProvisioningProgress({
+          type: 'status',
+          stage: provisioning?.stage || 'provisioning',
+          message: buildQueuedProvisioningMessage(latestSession, now - startedAt),
+          sessionStatus: latestSession.status,
+          provisioning,
+          waitMs: now - startedAt,
+        })
+        lastProgressKey = progressKey
+        lastProgressAt = now
+      }
+    }
+
+    await Promise.race([
+      inFlightProvisioning.catch(() => null),
+      sleep(PROVISIONING_POLL_INTERVAL_MS),
+    ])
+
+    latestSession = await TrialSessionModel.findById(session.id)
+  }
+}
+
+async function loadTrialMessageContext(sessionId, userId, rawMessage, options = {}) {
   if (!rawMessage || !rawMessage.trim()) {
     const err = new Error('消息内容不能为空')
     err.statusCode = 400
@@ -116,7 +240,7 @@ async function loadTrialMessageContext(sessionId, userId, rawMessage) {
   }
 
   const message = rawMessage.trim()
-  const session = await TrialSessionModel.findById(sessionId)
+  let session = await TrialSessionModel.findById(sessionId)
   if (!session || session.user_id !== userId) {
     const err = new Error('试用会话不存在')
     err.statusCode = 404
@@ -130,9 +254,20 @@ async function loadTrialMessageContext(sessionId, userId, rawMessage) {
   }
 
   if (session.status === 'provisioning') {
-    const err = new Error('试用环境仍在准备中，请稍后再试')
-    err.statusCode = 409
-    throw err
+    const inFlightProvisioning = provisioningTasks.get(session.id)
+
+    if (!inFlightProvisioning) {
+      const err = new Error('试用环境仍在准备中，请稍后再试')
+      err.statusCode = 409
+      throw err
+    }
+
+    session = await waitForTrialSessionActivation(
+      session,
+      userId,
+      inFlightProvisioning,
+      options.onProvisioningProgress
+    )
   }
 
   if (new Date(session.expires_at).getTime() < Date.now()) {
@@ -202,6 +337,83 @@ async function handleTrialMessageFailure(session, error) {
   })
 }
 
+function buildContainerSessionEnvelope(session, workspace, agent, sandboxMetadata) {
+  return {
+    ...session,
+    sandbox_ref: workspace.sandboxRef,
+    workspace_path: workspace.workspacePath,
+    agent_id: agent.id,
+    agent_name: agent.name,
+    agent_description: agent.description,
+    metadata: {
+      ...(session.metadata || {}),
+      sandbox: sandboxMetadata,
+    },
+  }
+}
+
+async function markTrialSessionReady(session, workspace, sandboxMetadata, install, gatewayWarmup) {
+  return TrialSessionModel.update(session.id, {
+    status: 'active',
+    runtime_type: workspace.type === 'container' ? 'container' : 'prompt',
+    sandbox_ref: workspace.sandboxRef,
+    workspace_path: workspace.workspacePath,
+    last_activity_at: new Date(),
+    metadata: {
+      ...(session.metadata || {}),
+      provisioning: buildProvisioningState(
+        'ready',
+        buildSessionReadyDetail(workspace, gatewayWarmup)
+      ),
+      sandbox: sandboxMetadata,
+      ...(install ? { install } : {}),
+      ...(workspace.type === 'container' ? { gateway_warmup: gatewayWarmup } : {}),
+    },
+  })
+}
+
+function startBackgroundGatewayWarmup(session, workspace, agent, sandboxMetadata, install) {
+  if (gatewayWarmupTasks.has(session.id)) {
+    return gatewayWarmupTasks.get(session.id)
+  }
+
+  const task = (async () => {
+    let gatewayWarmup = null
+
+    try {
+      gatewayWarmup = await prewarmSessionGateway(
+        buildContainerSessionEnvelope(session, workspace, agent, sandboxMetadata)
+      )
+    } catch (error) {
+      gatewayWarmup = {
+        status: 'failed',
+        duration_ms: 0,
+        error: error.message,
+        stdout: error.stdout || '',
+        stderr: error.stderr || '',
+      }
+    }
+
+    const latestSession = await TrialSessionModel.findById(session.id)
+    if (!latestSession || !['active', 'provisioning'].includes(latestSession.status)) {
+      return latestSession
+    }
+
+    return markTrialSessionReady(
+      latestSession,
+      workspace,
+      sandboxMetadata,
+      install,
+      gatewayWarmup
+    )
+  })().finally(() => {
+    gatewayWarmupTasks.delete(session.id)
+  })
+
+  gatewayWarmupTasks.set(session.id, task)
+  return task
+}
+
 async function executeTrialMessage(context, options = {}) {
   const { session, history, files, message } = context
   const onEvent = options.onEvent
@@ -211,7 +423,7 @@ async function executeTrialMessage(context, options = {}) {
     onEvent?.({
       type: 'status',
       stage: 'accepted',
-      message: '消息已接收，正在启动试用执行',
+      message: buildAcceptedExecutionMessage(session),
     })
 
     await TrialSessionMessageModel.create({
@@ -288,20 +500,7 @@ async function provisionTrialSession(session, agent) {
 
     let install = null
     let gatewayWarmup = null
-    const sandboxMetadata = {
-      provider: workspace.type,
-      ref: workspace.sandboxRef,
-      ...(workspace.pooled
-        ? {
-          pool: {
-            pooled: true,
-            slot_id: workspace.poolSlotId,
-            namespace: workspace.poolNamespace,
-            runtime_agent_id: workspace.runtimeAgentId,
-          },
-        }
-        : {}),
-    }
+    const sandboxMetadata = buildSandboxMetadata(workspace)
 
     if (workspace.type === 'container') {
       currentSession = await updateSessionProvisioningMetadata(
@@ -330,6 +529,35 @@ async function provisionTrialSession(session, agent) {
       if (install?.llm) {
         sandboxMetadata.llm_config_id = install.llm.llm_config_id || null
         sandboxMetadata.llm = install.llm
+      }
+
+      if (workspace.pooled && !getTrialRuntimeConfig().poolPrewarmGateway) {
+        currentSession = await TrialSessionModel.update(currentSession.id, {
+          status: 'active',
+          runtime_type: workspace.type === 'container' ? 'container' : 'prompt',
+          sandbox_ref: workspace.sandboxRef,
+          workspace_path: workspace.workspacePath,
+          last_activity_at: new Date(),
+          metadata: {
+            ...(currentSession.metadata || {}),
+            provisioning: buildProvisioningState(
+              'warming-gateway',
+              buildSessionWarmupDetail()
+            ),
+            sandbox: sandboxMetadata,
+            install,
+            gateway_warmup: {
+              status: 'warming',
+              duration_ms: 0,
+              message: 'Gateway prewarm started in background.',
+              pool_slot_id: workspace.poolSlotId,
+              pool_namespace: workspace.poolNamespace,
+            },
+          },
+        })
+
+        startBackgroundGatewayWarmup(currentSession, workspace, agent, sandboxMetadata, install)
+        return
       }
 
       if (workspace.pooled) {
@@ -370,27 +598,13 @@ async function provisionTrialSession(session, agent) {
       }
     }
 
-    const readyDetail =
-      gatewayWarmup?.status === 'failed'
-        ? '试用环境已就绪，流式引擎将在首条消息时继续启动'
-        : workspace.pooled
-          ? '试用环境已就绪，已命中预热沙盒'
-        : '试用环境已就绪'
-
-    currentSession = await TrialSessionModel.update(currentSession.id, {
-      status: 'active',
-      runtime_type: workspace.type === 'container' ? 'container' : 'prompt',
-      sandbox_ref: workspace.sandboxRef,
-      workspace_path: workspace.workspacePath,
-      last_activity_at: new Date(),
-      metadata: {
-        ...(currentSession.metadata || {}),
-        provisioning: buildProvisioningState('ready', readyDetail),
-        sandbox: sandboxMetadata,
-        ...(install ? { install } : {}),
-        ...(workspace.type === 'container' ? { gateway_warmup: gatewayWarmup } : {}),
-      },
-    })
+    currentSession = await markTrialSessionReady(
+      currentSession,
+      workspace,
+      sandboxMetadata,
+      install,
+      gatewayWarmup
+    )
   } catch (error) {
     await destroySessionSandbox({
       ...currentSession,
@@ -487,7 +701,9 @@ export async function sendTrialMessage({ sessionId, userId, message }) {
 }
 
 export async function streamTrialMessage({ sessionId, userId, message, onEvent }) {
-  const context = await loadTrialMessageContext(sessionId, userId, message)
+  const context = await loadTrialMessageContext(sessionId, userId, message, {
+    onProvisioningProgress: onEvent,
+  })
   return executeTrialMessage(context, { onEvent })
 }
 
