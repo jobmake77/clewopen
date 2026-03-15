@@ -95,7 +95,12 @@ function LlmSettings() {
     try {
       const res = await activateLlmConfig(id)
       if (res.success) {
-        message.success('已激活')
+        const poolRefresh = res.data?.poolRefresh
+        if (poolRefresh?.message) {
+          message.success(`已激活。${poolRefresh.message}`)
+        } else {
+          message.success('已激活')
+        }
         loadConfigs()
       }
     } catch (error) {
