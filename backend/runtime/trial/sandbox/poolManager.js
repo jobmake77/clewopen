@@ -24,6 +24,8 @@ const SLOT_LOG_FILES = {
   gateway: 'gateway.log',
 }
 const DEFAULT_SLOT_LOG_MAX_BYTES = 64 * 1024
+const SLOT_WARM_LEVEL_GATEWAY_HOT = 'gateway-hot'
+const SLOT_WARM_LEVEL_INSTALL_READY = 'install-ready'
 
 const slots = new Map()
 let maintenanceTimer = null
@@ -34,10 +36,13 @@ const poolMetrics = {
   startedAt: null,
   maintenanceRuns: 0,
   warmHits: 0,
+  gatewayHotHits: 0,
+  installReadyHits: 0,
   coldFallbacks: 0,
   leases: 0,
   releases: 0,
   slotWarmups: 0,
+  slotGatewayWarmups: 0,
   slotResets: 0,
   slotRecycles: 0,
   slotRecoveries: 0,
@@ -90,6 +95,26 @@ function buildSlotId(index) {
   return `slot-${String(index).padStart(2, '0')}`
 }
 
+function getSlotOrdinal(slotId) {
+  const match = String(slotId || '').match(/(\d+)$/)
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  const parsed = Number.parseInt(match[1], 10)
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER
+}
+
+function getSlotTargetWarmLevel(slotId, config = getTrialRuntimeConfig()) {
+  return getSlotOrdinal(slotId) <= Number(config.poolGatewayHotSize || 0)
+    ? SLOT_WARM_LEVEL_GATEWAY_HOT
+    : SLOT_WARM_LEVEL_INSTALL_READY
+}
+
+function isGatewayHotWarmLevel(warmLevel) {
+  return warmLevel === SLOT_WARM_LEVEL_GATEWAY_HOT
+}
+
 function normalizeRuntimeAgentId(value) {
   const normalized = String(value || 'pool-slot')
     .trim()
@@ -103,6 +128,13 @@ function normalizeRuntimeAgentId(value) {
 function getDesiredSlotIds() {
   const config = getTrialRuntimeConfig()
   return Array.from({ length: config.poolSize }, (_, index) => buildSlotId(index + 1))
+}
+
+function syncSlotTargetWarmLevel(slot, config = getTrialRuntimeConfig()) {
+  const targetWarmLevel = getSlotTargetWarmLevel(slot.id, config)
+  slot.targetWarmLevel = targetWarmLevel
+  slot.targetGatewayReady = isGatewayHotWarmLevel(targetWarmLevel)
+  return targetWarmLevel
 }
 
 function getManagedSlot(slotId) {
@@ -169,6 +201,7 @@ function clearSlotIssue(slot, options = {}) {
 function getOrCreateSlot(slotId) {
   const config = getTrialRuntimeConfig()
   if (!slots.has(slotId)) {
+    const targetWarmLevel = getSlotTargetWarmLevel(slotId, config)
     slots.set(slotId, {
       id: slotId,
       namespace: config.poolNamespace,
@@ -177,6 +210,9 @@ function getOrCreateSlot(slotId) {
       workspacePath: null,
       leasedSessionId: null,
       runtimeAgentId: normalizeRuntimeAgentId(slotId),
+      targetWarmLevel,
+      targetGatewayReady: isGatewayHotWarmLevel(targetWarmLevel),
+      warmLevel: null,
       useCount: 0,
       totalLeaseCount: 0,
       totalSessionsServed: 0,
@@ -204,7 +240,9 @@ function getOrCreateSlot(slotId) {
     })
   }
 
-  return slots.get(slotId)
+  const slot = slots.get(slotId)
+  syncSlotTargetWarmLevel(slot, config)
+  return slot
 }
 
 function getPoolInfo(session) {
@@ -215,6 +253,10 @@ function buildSlotSnapshot(slot) {
   return {
     id: slot.id,
     state: slot.state,
+    targetWarmLevel: slot.targetWarmLevel || SLOT_WARM_LEVEL_INSTALL_READY,
+    targetGatewayReady: Boolean(slot.targetGatewayReady),
+    warmLevel: slot.warmLevel || null,
+    gatewayReady: slot.state === 'warm' ? isGatewayHotWarmLevel(slot.warmLevel) : false,
     leasedSessionId: slot.leasedSessionId,
     useCount: slot.useCount,
     totalLeaseCount: slot.totalLeaseCount,
@@ -266,13 +308,16 @@ function buildSlotSession(slot, overrides = {}) {
           slot_id: slot.id,
           namespace: slot.namespace,
           runtime_agent_id: slot.runtimeAgentId,
+          warm_level: slot.warmLevel || null,
+          target_warm_level: slot.targetWarmLevel || SLOT_WARM_LEVEL_INSTALL_READY,
+          gateway_ready: slot.state === 'warm' ? isGatewayHotWarmLevel(slot.warmLevel) : false,
         },
       },
     },
   }
 }
 
-async function prepareBlankSlot(slot, { poolReuse }) {
+async function prepareBlankSlot(slot, { poolReuse, preserveGateway = false }) {
   await resetSessionWorkspaceFiles(slot.workspacePath)
 
   const blankSession = buildSlotSession(slot, {
@@ -282,7 +327,67 @@ async function prepareBlankSlot(slot, { poolReuse }) {
   await installSessionAgent(blankSession, {
     poolReuse,
     runtimeAgentId: slot.runtimeAgentId,
+    preserveGateway,
   })
+}
+
+function buildSkippedGatewayWarmupResult(slot, targetWarmLevel) {
+  return {
+    status: 'skipped',
+    duration_ms: 0,
+    message: isGatewayHotWarmLevel(targetWarmLevel)
+      ? 'Gateway hot slot will preserve its running gateway during pool reuse.'
+      : `Slot reserved as ${targetWarmLevel}; gateway kept install-ready until lease.`,
+    warm_level: targetWarmLevel,
+  }
+}
+
+function slotHasDesiredWarmLevel(slot) {
+  const targetWarmLevel = slot.targetWarmLevel || SLOT_WARM_LEVEL_INSTALL_READY
+  return slot.state === 'warm' && (slot.warmLevel || null) === targetWarmLevel
+}
+
+async function restoreSlotToTargetWarmLevel(slot, options = {}) {
+  const targetWarmLevel = syncSlotTargetWarmLevel(slot)
+  const preserveGateway = Boolean(options.preserveGateway && isGatewayHotWarmLevel(targetWarmLevel))
+
+  await prepareBlankSlot(slot, {
+    poolReuse: options.poolReuse,
+    preserveGateway,
+  })
+
+  let warmup = buildSkippedGatewayWarmupResult(slot, targetWarmLevel)
+
+  if (isGatewayHotWarmLevel(targetWarmLevel)) {
+    if (preserveGateway) {
+      warmup = {
+        status: 'preserved',
+        duration_ms: 0,
+        message: 'Gateway-hot slot reused the running gateway process.',
+        warm_level: targetWarmLevel,
+      }
+    } else {
+      setSlotState(slot, 'warming', 'gateway-prewarm')
+      warmup = await prewarmSessionGateway(buildSlotSession(slot))
+      if (warmup.status !== 'ok') {
+        throw new Error(
+          [warmup.error, warmup.stdout, warmup.stderr].filter(Boolean).join('\n') ||
+            'Pool slot gateway warmup failed'
+        )
+      }
+      incrementMetric('slotGatewayWarmups')
+      warmup = {
+        ...warmup,
+        warm_level: targetWarmLevel,
+      }
+    }
+  }
+
+  slot.warmLevel = targetWarmLevel
+  slot.gatewayWarmup = warmup
+  setSlotState(slot, 'warm', targetWarmLevel)
+
+  return warmup
 }
 
 function computeBrokenRetryDelayMs(slot) {
@@ -379,7 +484,6 @@ async function readTailFile(filePath, maxBytes = DEFAULT_SLOT_LOG_MAX_BYTES) {
 }
 
 async function warmFreshSlot(slot) {
-  const config = getTrialRuntimeConfig()
   const wasRecovering = slot.state === 'broken' || Number(slot.consecutiveFailures || 0) > 0
 
   setSlotState(slot, 'creating', 'rebuild-container')
@@ -395,28 +499,11 @@ async function warmFreshSlot(slot) {
   slot.containerState = 'running'
   slot.containerStatus = 'running'
 
-  await prepareBlankSlot(slot, { poolReuse: false })
+  const warmup = await restoreSlotToTargetWarmLevel(slot, {
+    poolReuse: false,
+  })
 
-  let warmup = {
-    status: 'skipped',
-    duration_ms: 0,
-    message: 'Gateway prewarm disabled for warm pool.',
-  }
-
-  if (config.poolPrewarmGateway) {
-    setSlotState(slot, 'warming', 'gateway-prewarm')
-    warmup = await prewarmSessionGateway(buildSlotSession(slot))
-    if (warmup.status !== 'ok') {
-      throw new Error(
-        [warmup.error, warmup.stdout, warmup.stderr].filter(Boolean).join('\n') ||
-          'Pool slot gateway warmup failed'
-      )
-    }
-  }
-
-  setSlotState(slot, 'warm', config.poolPrewarmGateway ? 'prewarmed' : 'install-ready')
   slot.lastWarmedAt = nowIso()
-  slot.gatewayWarmup = warmup
   slot.consecutiveFailures = 0
   clearSlotIssue(slot)
   incrementMetric('slotWarmups')
@@ -436,6 +523,8 @@ async function warmFreshSlot(slot) {
     containerName: slot.containerName,
     workspacePath: slot.workspacePath,
     gatewayPrewarm: warmup.status,
+    warmLevel: slot.warmLevel,
+    targetWarmLevel: slot.targetWarmLevel,
   })
 }
 
@@ -463,8 +552,10 @@ async function recycleSlot(slot, options = {}) {
 
 async function resetLeasedSlot(slot) {
   setSlotState(slot, 'resetting', 'lease-release')
-  await prepareBlankSlot(slot, { poolReuse: true })
-  setSlotState(slot, 'warm', 'reset-complete')
+  await restoreSlotToTargetWarmLevel(slot, {
+    poolReuse: true,
+    preserveGateway: isGatewayHotWarmLevel(slot.warmLevel || slot.targetWarmLevel),
+  })
   slot.lastReleasedAt = nowIso()
   clearSlotIssue(slot, { onlyCodes: ['task-failure', 'container-missing', 'container-not-running'] })
   incrementMetric('slotResets')
@@ -472,6 +563,7 @@ async function resetLeasedSlot(slot) {
     slotId: slot.id,
     namespace: slot.namespace,
     containerName: slot.containerName,
+    warmLevel: slot.warmLevel,
   })
 }
 
@@ -527,7 +619,7 @@ function isSlotEligibleToWarm(slot, nowMs = Date.now()) {
     return false
   }
 
-  if (slot.state === 'warm') {
+  if (slotHasDesiredWarmLevel(slot)) {
     return false
   }
 
@@ -539,7 +631,9 @@ function isSlotEligibleToWarm(slot, nowMs = Date.now()) {
 }
 
 async function ensureSlotWarm(slot) {
-  if (slot.state === 'warm') {
+  syncSlotTargetWarmLevel(slot)
+
+  if (slotHasDesiredWarmLevel(slot)) {
     return slot
   }
 
@@ -827,6 +921,7 @@ export function startTrialSandboxPool() {
     namespace: config.poolNamespace,
     size: config.poolSize,
     bootstrapConcurrency: config.poolBootstrapConcurrency,
+    gatewayHotSize: config.poolGatewayHotSize,
   })
 
   triggerPoolMaintenance().catch((error) => {
@@ -855,6 +950,23 @@ export function stopTrialSandboxPool() {
   logger.info('Trial sandbox pool manager stopped')
 }
 
+function compareAcquirableWarmSlots(left, right) {
+  const leftPriority = isGatewayHotWarmLevel(left.warmLevel) ? 0 : 1
+  const rightPriority = isGatewayHotWarmLevel(right.warmLevel) ? 0 : 1
+
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority
+  }
+
+  const leftLeasedAt = Date.parse(left.lastLeasedAt || 0)
+  const rightLeasedAt = Date.parse(right.lastLeasedAt || 0)
+  if (leftLeasedAt !== rightLeasedAt) {
+    return leftLeasedAt - rightLeasedAt
+  }
+
+  return left.id.localeCompare(right.id)
+}
+
 export async function acquireTrialSandboxSlot(sessionId) {
   if (!isPoolEnabled()) {
     return null
@@ -865,10 +977,12 @@ export async function acquireTrialSandboxSlot(sessionId) {
   const deadline = Date.now() + config.poolAcquireTimeoutMs
 
   while (Date.now() <= deadline) {
-    for (const slot of slots.values()) {
-      if (slot.state !== 'warm' || slot.leasedSessionId) {
-        continue
-      }
+    const warmSlots = Array.from(slots.values())
+      .filter((slot) => slot.state === 'warm' && !slot.leasedSessionId)
+      .sort(compareAcquirableWarmSlots)
+
+    for (const slot of warmSlots) {
+      syncSlotTargetWarmLevel(slot)
 
       setSlotState(slot, 'leased', 'session-acquired')
       slot.leasedSessionId = sessionId
@@ -879,11 +993,18 @@ export async function acquireTrialSandboxSlot(sessionId) {
       slot.leaseExpiresAt = null
       incrementMetric('leases')
       incrementMetric('warmHits')
+      if (isGatewayHotWarmLevel(slot.warmLevel)) {
+        incrementMetric('gatewayHotHits')
+      } else {
+        incrementMetric('installReadyHits')
+      }
       pushPoolEvent('pool-hit', {
         sessionId,
         slotId: slot.id,
         namespace: slot.namespace,
         waitedMs: Date.now() - startedAtMs,
+        warmLevel: slot.warmLevel,
+        targetWarmLevel: slot.targetWarmLevel,
       })
 
       return {
@@ -895,6 +1016,10 @@ export async function acquireTrialSandboxSlot(sessionId) {
         poolSlotId: slot.id,
         poolNamespace: slot.namespace,
         runtimeAgentId: slot.runtimeAgentId,
+        poolWarmLevel: slot.warmLevel || SLOT_WARM_LEVEL_INSTALL_READY,
+        poolTargetWarmLevel: slot.targetWarmLevel || SLOT_WARM_LEVEL_INSTALL_READY,
+        poolGatewayReady: isGatewayHotWarmLevel(slot.warmLevel),
+        poolGatewayWarmup: slot.gatewayWarmup || null,
       }
     }
 

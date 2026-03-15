@@ -47,6 +47,11 @@ const SLOT_STATE_META = {
   broken: { label: '异常', color: 'error' },
 }
 
+const SLOT_WARM_LEVEL_META = {
+  'gateway-hot': { label: 'Gateway-Hot', color: 'magenta' },
+  'install-ready': { label: 'Install-Ready', color: 'cyan' },
+}
+
 const EVENT_TYPE_META = {
   'pool-started': { label: 'Pool 启动', color: 'blue' },
   'pool-stopped': { label: 'Pool 停止', color: 'default' },
@@ -125,6 +130,11 @@ function getErrorMessage(error, fallbackMessage) {
 
 function renderSlotState(state) {
   const meta = SLOT_STATE_META[state] || { label: state || '未知', color: 'default' }
+  return <Tag color={meta.color}>{meta.label}</Tag>
+}
+
+function renderWarmLevel(warmLevel) {
+  const meta = SLOT_WARM_LEVEL_META[warmLevel] || { label: warmLevel || '未知', color: 'default' }
   return <Tag color={meta.color}>{meta.label}</Tag>
 }
 
@@ -324,6 +334,7 @@ function TrialRuntime() {
   const pool = poolStatus?.pool
   const runtime = poolStatus?.runtime
   const summary = pool?.summary || {}
+  const warmLevels = pool?.warmLevels || { targets: {}, ready: {} }
   const slots = pool?.slots || []
   const anomalies = pool?.anomalies || []
   const telemetry = pool?.telemetry || {}
@@ -396,6 +407,8 @@ function TrialRuntime() {
   const fillRate = pool?.size ? `${warmCount}/${pool.size}` : `${warmCount}`
   const hitRate = metrics.hitRate
   const anomalyCount = anomalies.length
+  const gatewayHotReadyCount = Number(warmLevels?.ready?.['gateway-hot'] || 0)
+  const gatewayHotTargetCount = Number(pool?.gatewayHotSize || warmLevels?.targets?.['gateway-hot'] || 0)
 
   const slotColumns = [
     {
@@ -412,6 +425,19 @@ function TrialRuntime() {
       key: 'state',
       width: 100,
       render: renderSlotState,
+    },
+    {
+      title: '热层',
+      key: 'warmLevel',
+      width: 170,
+      render: (_, record) => (
+        <Space size={4} direction="vertical">
+          {renderWarmLevel(record.warmLevel || record.targetWarmLevel)}
+          <Typography.Text type="secondary">
+            目标: {SLOT_WARM_LEVEL_META[record.targetWarmLevel]?.label || record.targetWarmLevel || '-'}
+          </Typography.Text>
+        </Space>
+      ),
     },
     {
       title: '容器',
@@ -704,7 +730,18 @@ function TrialRuntime() {
       </Row>
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}>
+        <Col span={6}>
+          <Card loading={loading}>
+            <Statistic
+              title="Gateway-Hot 就绪"
+              value={gatewayHotReadyCount}
+              suffix={`/ ${gatewayHotTargetCount}`}
+              prefix={<ThunderboltOutlined />}
+              valueStyle={{ color: gatewayHotReadyCount >= gatewayHotTargetCount ? '#52c41a' : '#fa8c16' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
           <Card loading={loading}>
             <Statistic
               title="使用中 Slot"
@@ -713,7 +750,7 @@ function TrialRuntime() {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card loading={loading}>
             <Statistic
               title="陈旧租约回收"
@@ -723,7 +760,7 @@ function TrialRuntime() {
             />
           </Card>
         </Col>
-        <Col span={8}>
+        <Col span={6}>
           <Card loading={loading}>
             <Statistic
               title="排空 / 修复中"
@@ -758,6 +795,8 @@ function TrialRuntime() {
           <Descriptions.Item label="容器镜像">{runtime?.containerImage || '-'}</Descriptions.Item>
           <Descriptions.Item label="容器网络">{runtime?.network || '-'}</Descriptions.Item>
           <Descriptions.Item label="预热规模">{pool?.size ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="Gateway-Hot 配额">{pool?.gatewayHotSize ?? 0}</Descriptions.Item>
+          <Descriptions.Item label="Gateway-Hot 就绪">{gatewayHotReadyCount}</Descriptions.Item>
           <Descriptions.Item label="并发预热">{pool?.bootstrapConcurrency ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="获取超时">
             {pool?.acquireTimeoutMs ? `${pool.acquireTimeoutMs} ms` : '-'}
@@ -771,11 +810,15 @@ function TrialRuntime() {
               : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="Warm 命中次数">{metrics.warmHits ?? 0}</Descriptions.Item>
+          <Descriptions.Item label="Hot 命中 / Install 命中">
+            {`${metrics.gatewayHotHits ?? 0} / ${metrics.installReadyHits ?? 0}`}
+          </Descriptions.Item>
           <Descriptions.Item label="冷启动回退次数">{metrics.coldFallbacks ?? 0}</Descriptions.Item>
           <Descriptions.Item label="累计租约">{metrics.leases ?? 0}</Descriptions.Item>
           <Descriptions.Item label="累计释放">{metrics.releases ?? 0}</Descriptions.Item>
           <Descriptions.Item label="累计重置">{metrics.slotResets ?? 0}</Descriptions.Item>
           <Descriptions.Item label="累计重建">{metrics.slotRecycles ?? 0}</Descriptions.Item>
+          <Descriptions.Item label="Gateway 预热次数">{metrics.slotGatewayWarmups ?? 0}</Descriptions.Item>
           <Descriptions.Item label="恢复成功次数">{metrics.slotRecoveries ?? 0}</Descriptions.Item>
           <Descriptions.Item label="陈旧租约回收">{metrics.staleLeaseReclaims ?? 0}</Descriptions.Item>
           <Descriptions.Item label="故障重试次数">{metrics.brokenRetries ?? 0}</Descriptions.Item>
@@ -837,6 +880,12 @@ function TrialRuntime() {
                 <Descriptions.Item label="容器名">{record.containerName || '-'}</Descriptions.Item>
                 <Descriptions.Item label="运行 Agent ID">{record.runtimeAgentId || '-'}</Descriptions.Item>
                 <Descriptions.Item label="工作目录">{record.workspacePath || '-'}</Descriptions.Item>
+                <Descriptions.Item label="当前热层">
+                  {renderWarmLevel(record.warmLevel || record.targetWarmLevel)}
+                </Descriptions.Item>
+                <Descriptions.Item label="目标热层">
+                  {renderWarmLevel(record.targetWarmLevel)}
+                </Descriptions.Item>
                 <Descriptions.Item label="Gateway 预热">
                   {record.gatewayWarmup?.status || '-'}
                 </Descriptions.Item>

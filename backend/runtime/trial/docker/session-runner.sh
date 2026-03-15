@@ -37,6 +37,7 @@ OPENCLAW_THINKING_LEVEL="${TRIAL_OPENCLAW_THINKING_LEVEL:-}"
 OPENCLAW_VERBOSE="${TRIAL_OPENCLAW_VERBOSE:-on}"
 OPENCLAW_USE_CLI_INSTALL="${TRIAL_OPENCLAW_USE_CLI_INSTALL:-false}"
 OPENCLAW_POOL_REUSE="${TRIAL_OPENCLAW_POOL_REUSE:-false}"
+OPENCLAW_PRESERVE_GATEWAY_ON_POOL_REUSE="${TRIAL_OPENCLAW_PRESERVE_GATEWAY_ON_POOL_REUSE:-false}"
 
 log() {
   target_file="$1"
@@ -386,6 +387,36 @@ try {
   const list = Array.isArray(config?.agents?.list) ? config.agents.list : []
   const found = list.some((item) => item && item.id === agentId)
   process.exit(found ? 0 : 1)
+} catch {
+  process.exit(1)
+}
+NODE
+}
+
+gateway_config_matches_runtime() {
+  TRIAL_OPENCLAW_CONFIG_FILE="$OPENCLAW_GATEWAY_CONFIG_FILE" \
+  TRIAL_OPENCLAW_PROVIDER_ID="$OPENCLAW_PROVIDER_ID" \
+  TRIAL_LLM_MODEL_ID="${TRIAL_LLM_MODEL_ID:-}" \
+  TRIAL_LLM_API_URL="${TRIAL_LLM_API_URL:-}" \
+  node <<'NODE'
+const fs = require('fs')
+
+const configPath = process.env.TRIAL_OPENCLAW_CONFIG_FILE
+const providerId = process.env.TRIAL_OPENCLAW_PROVIDER_ID
+const modelId = String(process.env.TRIAL_LLM_MODEL_ID || '').trim()
+const apiUrl = String(process.env.TRIAL_LLM_API_URL || '').trim()
+
+if (!configPath || !providerId || !modelId || !apiUrl || !fs.existsSync(configPath)) {
+  process.exit(1)
+}
+
+try {
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  const provider = config?.models?.providers?.[providerId]
+  const models = Array.isArray(provider?.models) ? provider.models : []
+  const hasModel = models.some((item) => item && item.id === modelId)
+  const baseUrlMatches = String(provider?.baseUrl || '').trim() === apiUrl
+  process.exit(hasModel && baseUrlMatches ? 0 : 1)
 } catch {
   process.exit(1)
 }
@@ -770,7 +801,14 @@ fast_install() {
 }
 
 pooled_reuse_install() {
-  cleanup_stale_gateway_process
+  if \
+    is_truthy "$OPENCLAW_PRESERVE_GATEWAY_ON_POOL_REUSE" && \
+    gateway_is_healthy && \
+    gateway_config_matches_runtime; then
+    log "$INSTALL_LOG_FILE" "preserving healthy gateway process for pooled reuse"
+  else
+    cleanup_stale_gateway_process
+  fi
   ensure_runtime_dirs
   prepare_runtime_workspace
   ensure_openclaw_home_dirs

@@ -94,6 +94,7 @@ TRIAL_OPENCLAW_NODE_OPTIONS=--max-old-space-size=1024
 ```bash
 TRIAL_POOL_ENABLED=true
 TRIAL_POOL_SIZE=5
+TRIAL_POOL_GATEWAY_HOT_SIZE=2
 TRIAL_POOL_ACQUIRE_TIMEOUT_MS=15000
 TRIAL_POOL_MAINTENANCE_INTERVAL_MS=10000
 TRIAL_POOL_BOOTSTRAP_CONCURRENCY=2
@@ -103,6 +104,7 @@ TRIAL_POOL_RECYCLE_AFTER_SESSIONS=30
 补充说明：
 
 - `TRIAL_POOL_SIZE=5` 对应当前建议的首批预热实例数
+- `TRIAL_POOL_GATEWAY_HOT_SIZE=2` 表示其中 2 个 slot 会额外保持 gateway-hot，其余 slot 维持 install-ready，用来在性能和内存之间做平衡
 - `TRIAL_POOL_BOOTSTRAP_CONCURRENCY=2` 表示每次最多并发预热 2 个 slot，但当前实现会在同一轮 maintenance 中持续补满直到 5 个 slot 全部 warm
 - `TRIAL_POOL_ACQUIRE_TIMEOUT_MS=15000` 表示会话等待 warm slot 的最大时间，超时后自动回退到冷启动
 - `TRIAL_POOL_WORKSPACE_ROOT` 默认会落到项目内的 `backend/.trial-runtime/trial-pool/<namespace>`
@@ -132,7 +134,7 @@ bash /Users/a77/Desktop/clewopen/scripts/start-trial-stack.sh
 - 先启动 `docker-compose.dev.yml` 中的 Postgres / Redis
 - 自动检查并构建 `openclew/trial-base:latest`
 - 再启动 `docker-compose.trial.yml` 中的 trial backend
-- 默认以 5 个 warm slot 启动 warm pool
+- 默认以 5 个 warm slot 启动 warm pool，其中 2 个 slot 会保持 `gateway-hot`
 
 停止方式：
 

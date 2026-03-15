@@ -80,6 +80,7 @@ bash scripts/start-trial-stack.sh
 - 固化以下 warm pool 参数：
   - `TRIAL_POOL_ENABLED=true`
   - `TRIAL_POOL_SIZE=5`
+  - `TRIAL_POOL_GATEWAY_HOT_SIZE=2`
   - `TRIAL_POOL_BOOTSTRAP_CONCURRENCY=2`
 
 停止方式：

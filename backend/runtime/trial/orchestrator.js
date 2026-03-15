@@ -58,6 +58,9 @@ function buildSandboxMetadata(workspace) {
             slot_id: workspace.poolSlotId,
             namespace: workspace.poolNamespace,
             runtime_agent_id: workspace.runtimeAgentId,
+            warm_level: workspace.poolWarmLevel || null,
+            target_warm_level: workspace.poolTargetWarmLevel || null,
+            gateway_ready: Boolean(workspace.poolGatewayReady),
           },
         }
       : {}),
@@ -67,6 +70,10 @@ function buildSandboxMetadata(workspace) {
 function buildSessionReadyDetail(workspace, gatewayWarmup) {
   if (gatewayWarmup?.status === 'failed') {
     return '试用环境已就绪，流式引擎将在首条消息时继续启动'
+  }
+
+  if (workspace?.pooled && workspace?.poolGatewayReady) {
+    return '试用环境已就绪，已命中 gateway-hot 热沙盒'
   }
 
   if (workspace?.pooled) {
@@ -524,6 +531,7 @@ async function provisionTrialSession(session, agent) {
       }, {
         poolReuse: workspace.pooled,
         runtimeAgentId: workspace.runtimeAgentId,
+        preserveGateway: workspace.pooled && workspace.poolGatewayReady,
       })
 
       if (install?.llm) {
@@ -531,7 +539,7 @@ async function provisionTrialSession(session, agent) {
         sandboxMetadata.llm = install.llm
       }
 
-      if (workspace.pooled && !getTrialRuntimeConfig().poolPrewarmGateway) {
+      if (workspace.pooled && !workspace.poolGatewayReady) {
         currentSession = await TrialSessionModel.update(currentSession.id, {
           status: 'active',
           runtime_type: workspace.type === 'container' ? 'container' : 'prompt',
@@ -561,12 +569,40 @@ async function provisionTrialSession(session, agent) {
       }
 
       if (workspace.pooled) {
-        gatewayWarmup = {
-          status: 'reused',
-          duration_ms: 0,
-          message: 'Warm sandbox pool hit',
-          pool_slot_id: workspace.poolSlotId,
-          pool_namespace: workspace.poolNamespace,
+        currentSession = await updateSessionProvisioningMetadata(
+          currentSession.id,
+          'warming-gateway',
+          workspace.poolGatewayReady
+            ? '正在校验 gateway-hot 热沙盒'
+            : '正在预热流式引擎',
+          currentSession.metadata
+        )
+
+        gatewayWarmup = await prewarmSessionGateway({
+          ...currentSession,
+          sandbox_ref: workspace.sandboxRef,
+          workspace_path: workspace.workspacePath,
+          agent_id: agent.id,
+          agent_name: agent.name,
+          agent_description: agent.description,
+          metadata: {
+            ...(currentSession.metadata || {}),
+            sandbox: sandboxMetadata,
+          },
+        })
+
+        if (workspace.poolGatewayReady) {
+          gatewayWarmup = {
+            ...gatewayWarmup,
+            status: gatewayWarmup.status === 'ok' ? 'reused' : gatewayWarmup.status,
+            message:
+              gatewayWarmup.status === 'ok'
+                ? 'Gateway-hot warm sandbox pool hit'
+                : gatewayWarmup.message || 'Gateway-hot warm sandbox validation failed',
+            pool_slot_id: workspace.poolSlotId,
+            pool_namespace: workspace.poolNamespace,
+            warm_level: workspace.poolWarmLevel || null,
+          }
         }
       } else {
         currentSession = await TrialSessionModel.update(currentSession.id, {

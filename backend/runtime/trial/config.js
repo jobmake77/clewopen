@@ -21,6 +21,11 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function parseNonNegativeInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
 function normalizeIdentifier(value, fallback) {
   const normalized = String(value || '')
     .trim()
@@ -40,6 +45,21 @@ function resolvePoolNamespace() {
 
 export function getTrialRuntimeConfig() {
   const poolNamespace = resolvePoolNamespace()
+  const poolSize = parsePositiveInt(process.env.TRIAL_POOL_SIZE, 5)
+  const poolPrewarmGateway = parseBoolean(process.env.TRIAL_POOL_PREWARM_GATEWAY, false)
+  const poolGatewayHotSize = Math.max(
+    0,
+    Math.min(
+      poolSize,
+      process.env.TRIAL_POOL_GATEWAY_HOT_SIZE === undefined ||
+        process.env.TRIAL_POOL_GATEWAY_HOT_SIZE === null ||
+        process.env.TRIAL_POOL_GATEWAY_HOT_SIZE === ''
+        ? poolPrewarmGateway
+          ? poolSize
+          : 0
+        : parseNonNegativeInt(process.env.TRIAL_POOL_GATEWAY_HOT_SIZE, 0)
+    )
+  )
 
   return {
     mode: normalizeRuntimeMode(process.env.TRIAL_RUNTIME_MODE),
@@ -81,7 +101,7 @@ export function getTrialRuntimeConfig() {
     baseImage: process.env.TRIAL_SANDBOX_BASE_IMAGE || 'node:22-bookworm-slim',
     openclewInstallCommand: process.env.OPENCLEW_INSTALL_COMMAND || '',
     poolEnabled: parseBoolean(process.env.TRIAL_POOL_ENABLED, false),
-    poolSize: parsePositiveInt(process.env.TRIAL_POOL_SIZE, 5),
+    poolSize,
     poolAcquireTimeoutMs: parsePositiveInt(process.env.TRIAL_POOL_ACQUIRE_TIMEOUT_MS, 15000),
     poolMaintenanceIntervalMs: parsePositiveInt(
       process.env.TRIAL_POOL_MAINTENANCE_INTERVAL_MS,
@@ -91,7 +111,8 @@ export function getTrialRuntimeConfig() {
       process.env.TRIAL_POOL_BOOTSTRAP_CONCURRENCY,
       2
     ),
-    poolPrewarmGateway: parseBoolean(process.env.TRIAL_POOL_PREWARM_GATEWAY, false),
+    poolPrewarmGateway,
+    poolGatewayHotSize,
     poolBrokenRetryBaseMs: parsePositiveInt(process.env.TRIAL_POOL_BROKEN_RETRY_BASE_MS, 15000),
     poolBrokenRetryMaxMs: parsePositiveInt(process.env.TRIAL_POOL_BROKEN_RETRY_MAX_MS, 120000),
     poolRecycleAfterSessions: parsePositiveInt(

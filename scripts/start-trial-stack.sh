@@ -11,6 +11,7 @@ BACKEND_PORT="${BACKEND_PORT:-5000}"
 TRIAL_POOL_SIZE="${TRIAL_POOL_SIZE:-5}"
 TRIAL_POOL_NAMESPACE="${TRIAL_POOL_NAMESPACE:-trial-backend-${BACKEND_PORT}}"
 TRIAL_POOL_PREWARM_GATEWAY="${TRIAL_POOL_PREWARM_GATEWAY:-false}"
+TRIAL_POOL_GATEWAY_HOT_SIZE="${TRIAL_POOL_GATEWAY_HOT_SIZE:-2}"
 TRIAL_SANDBOX_FORCE_REBUILD="${TRIAL_SANDBOX_FORCE_REBUILD:-0}"
 BACKEND_HEALTH_TIMEOUT_SECONDS="${BACKEND_HEALTH_TIMEOUT_SECONDS:-180}"
 TRIAL_POOL_WAIT_TIMEOUT_SECONDS="${TRIAL_POOL_WAIT_TIMEOUT_SECONDS:-240}"
@@ -112,6 +113,20 @@ slot_install_log_path() {
     "$slot_index"
 }
 
+is_slot_target_gateway_hot() {
+  local slot_index="$1"
+
+  if is_truthy "$TRIAL_POOL_PREWARM_GATEWAY"; then
+    return 0
+  fi
+
+  if ! [ "$TRIAL_POOL_GATEWAY_HOT_SIZE" -gt 0 ] 2>/dev/null; then
+    return 1
+  fi
+
+  [ "$slot_index" -le "$TRIAL_POOL_GATEWAY_HOT_SIZE" ]
+}
+
 is_pool_container_running() {
   local container_name="$1"
   docker ps --filter "name=^${container_name}$" --format '{{.Names}}' | grep -qx "$container_name"
@@ -131,7 +146,7 @@ is_pool_container_ready() {
     return 1
   fi
 
-  if ! is_truthy "$TRIAL_POOL_PREWARM_GATEWAY"; then
+  if ! is_slot_target_gateway_hot "$slot_index"; then
     return 0
   fi
 
@@ -214,6 +229,7 @@ export BACKEND_PORT
 export TRIAL_POOL_SIZE
 export TRIAL_POOL_NAMESPACE
 export TRIAL_POOL_PREWARM_GATEWAY
+export TRIAL_POOL_GATEWAY_HOT_SIZE
 
 docker compose -f "$INFRA_COMPOSE_FILE" up -d
 docker compose -f "$COMPOSE_FILE" up -d --build
@@ -227,5 +243,6 @@ echo "Backend: http://localhost:${BACKEND_PORT}"
 echo "Pool namespace: ${TRIAL_POOL_NAMESPACE}"
 echo "Pool status API: http://localhost:${BACKEND_PORT}/api/admin/trial-runtime/pool"
 echo "Warm slots: ${TRIAL_POOL_SIZE}"
+echo "Gateway-hot slots: ${TRIAL_POOL_GATEWAY_HOT_SIZE}"
 echo
 echo "Use scripts/stop-trial-stack.sh to stop the trial backend."

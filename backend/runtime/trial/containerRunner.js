@@ -140,6 +140,7 @@ async function buildSandboxEnv(session, userMessage, options = {}) {
     TRIAL_OPENCLAW_THINKING_LEVEL: config.openclawThinkingLevel,
     TRIAL_OPENCLAW_VERBOSE: config.openclawVerbose,
     TRIAL_OPENCLAW_POOL_REUSE: options.poolReuse ? 'true' : 'false',
+    TRIAL_OPENCLAW_PRESERVE_GATEWAY_ON_POOL_REUSE: options.preserveGateway ? 'true' : 'false',
   }
 
   if (!options.includeLlmConfig) {
@@ -305,6 +306,7 @@ export async function installSessionAgent(session, options = {}) {
     includeLlmConfig: true,
     poolReuse: options.poolReuse,
     runtimeAgentId: options.runtimeAgentId,
+    preserveGateway: options.preserveGateway,
   })
   const args = buildDockerExecArgs(containerName, config.installCommand, envMap)
 

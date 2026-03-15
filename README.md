@@ -123,6 +123,7 @@ bash scripts/start-trial-stack.sh
 - 启动 Postgres / Redis
 - 自动构建 `openclew/trial-base:latest`
 - 启动带 `TRIAL_POOL_SIZE=5` 的试用后端
+- 默认额外保留 `TRIAL_POOL_GATEWAY_HOT_SIZE=2` 个 `gateway-hot` 槽位
 
 停止：
 

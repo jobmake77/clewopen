@@ -36,6 +36,33 @@ function buildPoolSummary(slots) {
   return summary
 }
 
+function buildWarmLevelSummary(slots) {
+  return slots.reduce(
+    (accumulator, slot) => {
+      const targetWarmLevel = slot?.targetWarmLevel || 'install-ready'
+      const warmLevel = slot?.warmLevel || null
+
+      accumulator.targets[targetWarmLevel] = Number(accumulator.targets[targetWarmLevel] || 0) + 1
+
+      if (slot?.state === 'warm' && warmLevel) {
+        accumulator.ready[warmLevel] = Number(accumulator.ready[warmLevel] || 0) + 1
+      }
+
+      return accumulator
+    },
+    {
+      targets: {
+        'gateway-hot': 0,
+        'install-ready': 0,
+      },
+      ready: {
+        'gateway-hot': 0,
+        'install-ready': 0,
+      },
+    }
+  )
+}
+
 function buildEventCounts(events) {
   return events.reduce((accumulator, event) => {
     const type = event?.type || 'unknown'
@@ -53,9 +80,16 @@ function buildActiveAnomalies(slots) {
   )
 }
 
-function derivePoolHealth(summary, metrics, anomalies) {
+function derivePoolHealth(summary, metrics, anomalies, config, warmLevels) {
   if (Number(summary.broken || 0) > 0 || anomalies.length >= 2) {
     return 'critical'
+  }
+
+  if (
+    Number(config?.poolGatewayHotSize || 0) > 0 &&
+    Number(warmLevels?.ready?.['gateway-hot'] || 0) < Number(config.poolGatewayHotSize || 0)
+  ) {
+    return 'degraded'
   }
 
   if (
@@ -85,6 +119,7 @@ router.get('/trial-runtime/pool', (req, res) => {
   const slots = getTrialSandboxPoolSnapshot()
   const telemetry = getTrialSandboxPoolTelemetry()
   const summary = buildPoolSummary(slots)
+  const warmLevels = buildWarmLevelSummary(slots)
   const totalAcquireAttempts =
     Number(telemetry.metrics.warmHits || 0) + Number(telemetry.metrics.coldFallbacks || 0)
   const hitRate =
@@ -97,7 +132,7 @@ router.get('/trial-runtime/pool', (req, res) => {
   const recentAnomalyEvents = telemetry.events.filter((event) =>
     ['slot-anomaly', 'slot-error', 'slot-stale-lease', 'slot-draining'].includes(event.type)
   )
-  const health = derivePoolHealth(summary, telemetry.metrics, activeAnomalies)
+  const health = derivePoolHealth(summary, telemetry.metrics, activeAnomalies, config, warmLevels)
 
   res.json({
     success: true,
@@ -115,11 +150,13 @@ router.get('/trial-runtime/pool', (req, res) => {
         acquireTimeoutMs: config.poolAcquireTimeoutMs,
         maintenanceIntervalMs: config.poolMaintenanceIntervalMs,
         bootstrapConcurrency: config.poolBootstrapConcurrency,
+        gatewayHotSize: config.poolGatewayHotSize,
         brokenRetryBaseMs: config.poolBrokenRetryBaseMs,
         brokenRetryMaxMs: config.poolBrokenRetryMaxMs,
         recycleAfterSessions: config.poolRecycleAfterSessions,
         workspaceRoot: config.poolWorkspaceRoot,
         summary,
+        warmLevels,
         health,
         slots,
         anomalies: activeAnomalies,
