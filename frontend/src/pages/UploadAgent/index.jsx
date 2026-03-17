@@ -63,6 +63,7 @@ const UploadAgent = () => {
       formData.append('description', values.description)
       formData.append('category', values.category)
       formData.append('version', values.version)
+      formData.append('publish_mode', values.publish_mode)
 
       // 处理标签
       formData.append('tags', JSON.stringify(tags))
@@ -70,7 +71,7 @@ const UploadAgent = () => {
       const response = await uploadAgent(formData)
 
       if (response.success) {
-        message.success('Agent 上传成功，等待审核')
+        message.success(response.message || 'Agent 上传成功，等待审核')
         navigate('/user')
       }
     } catch (error) {
@@ -90,7 +91,7 @@ const UploadAgent = () => {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          initialValues={{}}
+          initialValues={{ publish_mode: 'open' }}
         >
           <Form.Item
             label="Agent 名称"
@@ -131,6 +132,18 @@ const UploadAgent = () => {
             rules={[{ required: true, message: '请输入版本号' }]}
           >
             <Input placeholder="例如：1.0.0" />
+          </Form.Item>
+
+          <Form.Item
+            label="发布模式"
+            name="publish_mode"
+            rules={[{ required: true, message: '请选择发布模式' }]}
+            extra="公开分发可直接安装；商业分发将通过受控安装命令分发。"
+          >
+            <Select>
+              <Option value="open">公开分发</Option>
+              <Option value="commercial">商业分发</Option>
+            </Select>
           </Form.Item>
 
           <Form.Item label="标签">
@@ -199,4 +212,3 @@ const UploadAgent = () => {
 }
 
 export default UploadAgent
-

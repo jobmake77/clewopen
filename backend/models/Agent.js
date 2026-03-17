@@ -115,8 +115,9 @@ export const AgentModel = {
       INSERT INTO agents (
         author_id, name, slug, description, version,
         category, tags,
-        package_url, manifest, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        package_url, manifest, status, review_stage, auto_review_result,
+        publish_mode, publish_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
 
@@ -131,6 +132,10 @@ export const AgentModel = {
       agentData.package_url,
       JSON.stringify(agentData.manifest),
       agentData.status || 'pending',
+      agentData.review_stage || 'pending_auto',
+      JSON.stringify(agentData.auto_review_result || {}),
+      agentData.publish_mode || 'open',
+      agentData.publish_status || 'not_published',
     ];
 
     const result = await query(sql, params);
@@ -272,7 +277,7 @@ export const AgentModel = {
   // ==================== Admin Methods ====================
 
   // Get all agents for admin (including pending, rejected)
-  async findAllAdmin({ page = 1, pageSize = 20, status, category, search }) {
+  async findAllAdmin({ page = 1, pageSize = 20, status, category, search, reviewStage }) {
     let sql = `
       SELECT
         a.*,
@@ -290,6 +295,12 @@ export const AgentModel = {
     if (status) {
       sql += ` AND a.status = $${paramIndex}`;
       params.push(status);
+      paramIndex++;
+    }
+
+    if (reviewStage) {
+      sql += ` AND a.review_stage = $${paramIndex}`;
+      params.push(reviewStage);
       paramIndex++;
     }
 
@@ -332,6 +343,12 @@ export const AgentModel = {
       countParamIndex++;
     }
 
+    if (reviewStage) {
+      countSql += ` AND a.review_stage = $${countParamIndex}`;
+      countParams.push(reviewStage);
+      countParamIndex++;
+    }
+
     if (category && category !== '全部') {
       countSql += ` AND a.category = $${countParamIndex}`;
       countParams.push(category);
@@ -356,7 +373,15 @@ export const AgentModel = {
   },
 
   // Update agent status
-  async updateStatus(id, status, reason = null) {
+  async updateStatus(id, status, reason = null, options = {}) {
+    const nextReviewStage = options.review_stage || (
+      status === 'approved'
+        ? 'approved'
+        : status === 'rejected'
+          ? 'rejected'
+          : undefined
+    );
+
     let sql = `
       UPDATE agents
       SET status = $1, updated_at = CURRENT_TIMESTAMP
@@ -367,6 +392,24 @@ export const AgentModel = {
     // If approved, set published_at
     if (status === 'approved') {
       sql += `, published_at = CURRENT_TIMESTAMP`;
+    }
+
+    if (nextReviewStage) {
+      sql += `, review_stage = $${paramIndex}`;
+      params.push(nextReviewStage);
+      paramIndex++;
+    }
+
+    if (options.auto_review_result !== undefined) {
+      sql += `, auto_review_result = $${paramIndex}::jsonb`;
+      params.push(JSON.stringify(options.auto_review_result || {}));
+      paramIndex++;
+    }
+
+    if (options.publish_status) {
+      sql += `, publish_status = $${paramIndex}`;
+      params.push(options.publish_status);
+      paramIndex++;
     }
 
     // If rejected, optionally store reason in metadata
@@ -380,6 +423,37 @@ export const AgentModel = {
     params.push(id);
 
     const result = await query(sql, params);
+    return result.rows[0] || null;
+  },
+
+  async markPublished(id, publishData = {}) {
+    const result = await query(
+      `UPDATE agents
+       SET
+         review_stage = 'published',
+         publish_status = 'published',
+         publish_mode = COALESCE($2, publish_mode),
+         package_registry = COALESCE($3, package_registry),
+         package_name = COALESCE($4, package_name),
+         repository_url = COALESCE($5, repository_url),
+         install_hint = COALESCE($6, install_hint),
+         last_published_version = version,
+         last_published_at = CURRENT_TIMESTAMP,
+         published_at = COALESCE(published_at, CURRENT_TIMESTAMP),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+         AND deleted_at IS NULL
+       RETURNING *`,
+      [
+        id,
+        publishData.publish_mode || null,
+        publishData.package_registry || null,
+        publishData.package_name || null,
+        publishData.repository_url || null,
+        publishData.install_hint || null,
+      ]
+    );
+
     return result.rows[0] || null;
   },
 };

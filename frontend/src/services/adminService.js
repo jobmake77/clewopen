@@ -18,6 +18,30 @@ export const rejectAgent = (id, reason) => {
   return api.post(`/agents/admin/${id}/reject`, { reason })
 }
 
+export const publishAgent = (id, payload) => {
+  return api.post(`/agents/admin/${id}/publish`, payload || {})
+}
+
+export const getAgentPublishJobs = (id, params) => {
+  return api.get(`/agents/admin/${id}/publish-jobs`, { params })
+}
+
+export const getGlobalAgentPublishJobs = (params) => {
+  return api.get('/agents/admin/publish-jobs', { params })
+}
+
+export const getGlobalAgentPublishJobsSummary = (params) => {
+  return api.get('/agents/admin/publish-jobs/summary', { params })
+}
+
+export const triggerGlobalPublishJobsAlert = (payload) => {
+  return api.post('/agents/admin/publish-jobs/alerts/trigger', payload || {})
+}
+
+export const retryAgentPublishJob = (jobId) => {
+  return api.post(`/agents/admin/publish-jobs/${jobId}/retry`)
+}
+
 export const batchAgentAction = (ids, action, reason) => {
   return api.post('/agents/admin/batch', { ids, action, reason })
 }

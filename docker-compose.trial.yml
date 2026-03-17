@@ -38,6 +38,8 @@ services:
       TRIAL_POOL_RECYCLE_AFTER_SESSIONS: ${TRIAL_POOL_RECYCLE_AFTER_SESSIONS:-30}
       TRIAL_WORKSPACE_ROOT: ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/.trial-runtime/trial-sessions
       TRIAL_POOL_WORKSPACE_ROOT: ${HOST_PROJECT_ROOT:?Set HOST_PROJECT_ROOT before running compose}/backend/.trial-runtime/trial-pool
+      GITHUB_PUBLISH_TOKEN: ${GITHUB_PUBLISH_TOKEN:-}
+      GITHUB_PUBLISH_OWNER: ${GITHUB_PUBLISH_OWNER:-}
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:

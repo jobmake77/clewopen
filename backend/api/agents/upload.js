@@ -4,15 +4,21 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 import AgentModel from '../../models/Agent.js'
 import { validateAgentPackage } from '../../utils/manifestValidator.js'
+import { runAgentAutoReview } from '../../utils/agentAutoReview.js'
 import { logger } from '../../config/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const backendRoot = path.resolve(__dirname, '../..')
+
+function resolveStoredPackagePath(packageUrl) {
+  return path.join(backendRoot, String(packageUrl || '').replace(/^\/+/, ''))
+}
 
 // 配置文件上传
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../../uploads/agents')
+    const uploadDir = path.join(backendRoot, 'uploads/agents')
 
     // 确保上传目录存在
     if (!fs.existsSync(uploadDir)) {
@@ -48,6 +54,16 @@ export const upload = multer({
   }
 })
 
+function buildAgentSlug(name = '') {
+  const base = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return `${base || 'agent'}-${Date.now()}`
+}
+
 /**
  * 上传 Agent 包
  */
@@ -61,7 +77,7 @@ export const uploadAgent = async (req, res, next) => {
     }
 
     const userId = req.user.id
-    const { name, description, category, version, price, tags } = req.body
+    const { name, description, category, version, tags, publish_mode } = req.body
 
     // 验证必填字段
     if (!name || !description || !category || !version) {
@@ -95,16 +111,31 @@ export const uploadAgent = async (req, res, next) => {
 
     // 使用 manifest 中的信息（如果提供）
     const manifest = validationResult.manifest
+    const publishMode = ['open', 'commercial'].includes(String(publish_mode || '').toLowerCase())
+      ? String(publish_mode).toLowerCase()
+      : 'open'
+    const autoReviewResult = runAgentAutoReview({
+      manifest,
+      files: validationResult.files,
+      validationWarnings: validationResult.warnings,
+    })
+    const autoRejected = autoReviewResult.decision === 'reject'
+    const nextReviewStage = autoRejected ? 'rejected' : 'pending_manual'
+
     const agentData = {
       name: name || manifest.name,
+      slug: buildAgentSlug(name || manifest.name),
       description: description || manifest.description,
       category: category || manifest.category || 'other',
       version: version || manifest.version,
       author_id: userId,
       package_url: `/uploads/agents/${req.file.filename}`,
-      price: price ? JSON.parse(price) : (manifest.price || { type: 'free', amount: 0 }),
       tags: tags ? JSON.parse(tags) : (manifest.tags || []),
-      status: 'pending',
+      status: autoRejected ? 'rejected' : 'pending',
+      review_stage: nextReviewStage,
+      auto_review_result: autoReviewResult,
+      publish_mode: publishMode,
+      publish_status: 'not_published',
       manifest: manifest // 保存完整的 manifest 信息
     }
 
@@ -114,12 +145,15 @@ export const uploadAgent = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: agent,
-      message: 'Agent 上传成功，等待审核',
+      message: autoRejected
+        ? 'Agent 已被自动审核拒绝，请修复后重新提交'
+        : 'Agent 上传成功，已通过自动审核，等待人工审核',
       validation: {
         manifest: validationResult.manifest,
         files: validationResult.files,
         warnings: validationResult.warnings || []
-      }
+      },
+      review: autoReviewResult,
     })
   } catch (error) {
     // 如果创建失败，删除已上传的文件
@@ -170,7 +204,7 @@ export const updateAgent = async (req, res, next) => {
     // 如果上传了新文件
     if (req.file) {
       // 删除旧文件
-      const oldFilePath = path.join(__dirname, '../../../', agent.package_url)
+      const oldFilePath = resolveStoredPackagePath(agent.package_url)
       if (fs.existsSync(oldFilePath)) {
         fs.unlinkSync(oldFilePath)
       }
@@ -222,7 +256,7 @@ export const deleteAgent = async (req, res, next) => {
     }
 
     // 删除文件
-    const filePath = path.join(__dirname, '../../../', agent.package_url)
+    const filePath = resolveStoredPackagePath(agent.package_url)
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
     }

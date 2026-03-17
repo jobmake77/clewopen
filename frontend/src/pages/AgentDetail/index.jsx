@@ -6,6 +6,7 @@ import { DownloadOutlined, StarOutlined, FileTextOutlined, LinkOutlined, PlayCir
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
 import api from '../../services/api'
+import { getAgentInstallCommand } from '../../services/agentService'
 import {
   createTrialSession,
   endTrialSession,
@@ -34,6 +35,18 @@ const TRIAL_PROVISIONING_STAGE_META = {
   failed: { label: '试用环境准备失败', percent: 100 },
 }
 
+const AGENT_PUBLISH_STATUS_META = {
+  not_published: { label: '未发布', color: 'default' },
+  queued: { label: '发布排队中', color: 'processing' },
+  published: { label: '已发布', color: 'success' },
+  failed: { label: '发布失败', color: 'error' },
+}
+
+const AGENT_PUBLISH_MODE_META = {
+  open: '公开分发',
+  commercial: '商业分发',
+}
+
 function shouldPollTrialSession(status, provisioningStage) {
   if (status === 'provisioning') return true
   if (status !== 'active') return false
@@ -51,6 +64,9 @@ function AgentDetail() {
   const [rateModalVisible, setRateModalVisible] = useState(false)
   const [submittingRate, setSubmittingRate] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [installCommandVisible, setInstallCommandVisible] = useState(false)
+  const [installCommandLoading, setInstallCommandLoading] = useState(false)
+  const [installCommandData, setInstallCommandData] = useState(null)
   const [form] = Form.useForm()
 
   // Trial sandbox state
@@ -348,6 +364,40 @@ function AgentDetail() {
     setRateModalVisible(true)
   }
 
+  const handleGetInstallCommand = async () => {
+    if (!isAuthenticated) {
+      message.warning('请先登录')
+      navigate('/login')
+      return
+    }
+
+    setInstallCommandVisible(true)
+    setInstallCommandLoading(true)
+    try {
+      const response = await getAgentInstallCommand(id)
+      if (response.success) {
+        setInstallCommandData(response.data)
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '获取安装命令失败')
+      setInstallCommandVisible(false)
+    } finally {
+      setInstallCommandLoading(false)
+    }
+  }
+
+  const handleCopyInstallCommand = async () => {
+    const command = installCommandData?.installCommand
+    if (!command) return
+
+    try {
+      await navigator.clipboard.writeText(command)
+      message.success('安装命令已复制')
+    } catch (error) {
+      message.error('复制失败，请手动复制')
+    }
+  }
+
   const handleSubmitRate = async (values) => {
     setSubmittingRate(true)
     try {
@@ -577,6 +627,10 @@ function AgentDetail() {
 
   const trialStatusMeta = TRIAL_STATUS_META[trialSessionStatus] || { label: trialSessionStatus || '未开始', color: 'default' }
   const provisioningMeta = TRIAL_PROVISIONING_STAGE_META[trialProvisioning?.stage] || null
+  const publishStatusMeta = AGENT_PUBLISH_STATUS_META[currentAgent?.publish_status] || {
+    label: currentAgent?.publish_status || '未知',
+    color: 'default',
+  }
   const isTrialPreparing = trialSessionStatus === 'provisioning'
   const isTrialWarming =
     trialSessionStatus === 'active' &&
@@ -865,6 +919,17 @@ function AgentDetail() {
             <Button
               size="large"
               block
+              icon={<LinkOutlined />}
+              style={{ marginBottom: 12 }}
+              onClick={handleGetInstallCommand}
+              disabled={currentAgent.review_stage !== 'published'}
+            >
+              获取安装命令
+            </Button>
+
+            <Button
+              size="large"
+              block
               icon={<PlayCircleOutlined />}
               style={{ marginBottom: 12 }}
               onClick={openTrialModal}
@@ -882,6 +947,39 @@ function AgentDetail() {
             </Button>
 
             <Divider />
+
+            <div style={{ marginBottom: 16 }}>
+              <h4>发布状态</h4>
+              <p>
+                <strong>状态:</strong>{' '}
+                <Tag color={publishStatusMeta.color}>{publishStatusMeta.label}</Tag>
+              </p>
+              <p>
+                <strong>分发模式:</strong> {AGENT_PUBLISH_MODE_META[currentAgent.publish_mode] || currentAgent.publish_mode || '-'}
+              </p>
+              <p>
+                <strong>发布渠道:</strong> {currentAgent.package_registry || '-'}
+              </p>
+              <p>
+                <strong>包名:</strong> {currentAgent.package_name || '-'}
+              </p>
+              <p>
+                <strong>仓库:</strong>{' '}
+                {currentAgent.repository_url ? (
+                  <a href={currentAgent.repository_url} target="_blank" rel="noreferrer">
+                    查看仓库
+                  </a>
+                ) : (
+                  '-'
+                )}
+              </p>
+              <p>
+                <strong>最近发布时间:</strong>{' '}
+                {currentAgent.last_published_at
+                  ? new Date(currentAgent.last_published_at).toLocaleString()
+                  : '-'}
+              </p>
+            </div>
 
             <div>
               <h4>Agent 信息</h4>
@@ -901,6 +999,44 @@ function AgentDetail() {
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        title="安装命令"
+        open={installCommandVisible}
+        onCancel={() => setInstallCommandVisible(false)}
+        footer={[
+          <Button key="copy" type="primary" onClick={handleCopyInstallCommand}>
+            复制命令
+          </Button>,
+          <Button key="close" onClick={() => setInstallCommandVisible(false)}>
+            关闭
+          </Button>,
+        ]}
+      >
+        {installCommandLoading ? (
+          <Spin />
+        ) : (
+          <div>
+            <p>
+              <strong>分发模式:</strong> {installCommandData?.publishMode === 'commercial' ? '商业分发' : '公开分发'}
+            </p>
+            {installCommandData?.expiresAt && (
+              <p>
+                <strong>命令过期时间:</strong> {new Date(installCommandData.expiresAt).toLocaleString()}
+              </p>
+            )}
+            {installCommandData?.installHint && (
+              <Alert
+                style={{ marginBottom: 12 }}
+                type="info"
+                showIcon
+                message={installCommandData.installHint}
+              />
+            )}
+            <Input.TextArea value={installCommandData?.installCommand || ''} autoSize={{ minRows: 3, maxRows: 6 }} readOnly />
+          </div>
+        )}
+      </Modal>
 
       {/* 试用沙盒弹窗 */}
       <Modal

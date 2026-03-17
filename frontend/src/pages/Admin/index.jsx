@@ -7,6 +7,7 @@ import ReviewManagement from './ReviewManagement'
 import DataSync from './DataSync'
 import LlmSettings from './LlmSettings'
 import TrialRuntime from './TrialRuntime'
+import PublishOps from './PublishOps'
 import { getPendingAgents, getAllReviews, getAllAgentsAdmin } from '../../services/adminService'
 import './index.css'
 
@@ -67,6 +68,11 @@ function Admin() {
       key: 'trial-runtime',
       label: '试用沙盒',
       children: <TrialRuntime />
+    },
+    {
+      key: 'publish-ops',
+      label: '发布运维',
+      children: <PublishOps />
     }
   ]
 

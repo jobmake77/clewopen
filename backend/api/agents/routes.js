@@ -1,5 +1,28 @@
 import express from 'express'
-import { getAgents, getAgentById, downloadAgent, rateAgent, getAgentReviews, getAgentStats, getTrendingAgents, getPlatformStats, getAllAgentsAdmin, getPendingAgents, approveAgent, rejectAgent, batchApproveAgents, getAgentDependencies } from './controller.js'
+import {
+  getAgents,
+  getAgentById,
+  downloadAgent,
+  rateAgent,
+  getAgentReviews,
+  getAgentStats,
+  getTrendingAgents,
+  getPlatformStats,
+  getAllAgentsAdmin,
+  getPendingAgents,
+  approveAgent,
+  rejectAgent,
+  batchApproveAgents,
+  getAgentDependencies,
+  publishAgent,
+  getAgentPublishJobs,
+  getGlobalPublishJobsAdmin,
+  getGlobalPublishJobsSummaryAdmin,
+  triggerGlobalPublishJobsAlertAdmin,
+  retryAgentPublishJob,
+  createAgentInstallCommand,
+  downloadAgentByInstallToken,
+} from './controller.js'
 import { uploadAgent, updateAgent, deleteAgent, upload } from './upload.js'
 import { getAgentPreview } from './preview.js'
 import { trialAgent, getTrialHistory } from './trial.js'
@@ -13,6 +36,7 @@ const router = express.Router()
 router.get('/', getAgents)
 router.get('/trending', getTrendingAgents)
 router.get('/platform-stats', getPlatformStats)
+router.get('/install/:token/download', downloadAgentByInstallToken)
 
 // 管理员专用路由（必须在 /:id 之前）
 router.get('/admin/all', authenticate, authorize('admin'), getAllAgentsAdmin)
@@ -20,6 +44,12 @@ router.get('/admin/pending', authenticate, authorize('admin'), getPendingAgents)
 router.post('/admin/batch', authenticate, authorize('admin'), auditLog('agent_batch'), batchApproveAgents)
 router.post('/admin/:id/approve', authenticate, authorize('admin'), auditLog('agent_approve'), approveAgent)
 router.post('/admin/:id/reject', authenticate, authorize('admin'), auditLog('agent_reject'), rejectAgent)
+router.post('/admin/:id/publish', authenticate, authorize('admin'), auditLog('agent_publish'), publishAgent)
+router.get('/admin/publish-jobs/summary', authenticate, authorize('admin'), getGlobalPublishJobsSummaryAdmin)
+router.post('/admin/publish-jobs/alerts/trigger', authenticate, authorize('admin'), auditLog('agent_publish_alert'), triggerGlobalPublishJobsAlertAdmin)
+router.get('/admin/publish-jobs', authenticate, authorize('admin'), getGlobalPublishJobsAdmin)
+router.get('/admin/:id/publish-jobs', authenticate, authorize('admin'), getAgentPublishJobs)
+router.post('/admin/publish-jobs/:jobId/retry', authenticate, authorize('admin'), auditLog('agent_publish_retry'), retryAgentPublishJob)
 
 // 开发者和管理员路由（固定路径优先）
 router.post('/upload', authenticate, authorize('developer', 'admin'), upload.single('package'), uploadAgent)
@@ -33,6 +63,7 @@ router.post('/:id/trial', authenticate, trialAgent)
 router.post('/:id/trial-sessions', authenticate, createSessionForAgent)
 router.get('/:id/reviews', getAgentReviews)
 router.get('/:id/stats', getAgentStats)
+router.post('/:id/install-command', authenticate, createAgentInstallCommand)
 router.post('/:id/download', authenticate, downloadAgent)
 router.post('/:id/rate', authenticate, rateAgent)
 router.put('/:id', authenticate, authorize('developer', 'admin'), upload.single('package'), updateAgent)

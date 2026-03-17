@@ -21,6 +21,7 @@ import { errorHandler } from '../middleware/errorHandler.js'
 import { logger } from '../config/logger.js'
 import { bootstrapActiveLlmConfigFromEnv } from '../services/llmConfigBootstrapService.js'
 import { startScheduler, stopScheduler } from '../services/syncService.js'
+import { startAgentPublishWorker, stopAgentPublishWorker } from '../services/agentPublishService.js'
 import { startTrialCleanupWorker, stopTrialCleanupWorker } from '../runtime/trial/cleanupWorker.js'
 import { startTrialSandboxPool, stopTrialSandboxPool } from '../runtime/trial/sandbox/poolManager.js'
 
@@ -117,6 +118,7 @@ async function startServer() {
     logger.info(`Server running on port ${PORT}`)
     console.log(`🚀 Server running on http://localhost:${PORT}`)
     startScheduler()
+    startAgentPublishWorker()
     startTrialCleanupWorker()
     startTrialSandboxPool()
   })
@@ -126,6 +128,7 @@ async function startServer() {
 const gracefulShutdown = (signal) => {
   logger.info(`${signal} received, shutting down gracefully...`)
   stopScheduler()
+  stopAgentPublishWorker()
   stopTrialCleanupWorker()
   stopTrialSandboxPool()
   if (!server) {

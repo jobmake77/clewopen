@@ -19,6 +19,10 @@ export const rateAgent = (id, rating, comment) => {
   return api.post(`/agents/${id}/rate`, { rating, comment })
 }
 
+export const getAgentInstallCommand = (id, payload = {}) => {
+  return api.post(`/agents/${id}/install-command`, payload)
+}
+
 export const getAgentReviews = (id, params = {}) => {
   return api.get(`/agents/${id}/reviews`, { params })
 }
