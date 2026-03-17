@@ -233,13 +233,18 @@ export function createResourceModel(tableName) {
       return result.rows[0] || null;
     },
 
-    async getTrending({ limit = 10, sourceType, sourcePlatform }) {
+    async getTrending({ limit = 10, days = 7, sourceType, sourcePlatform }) {
+      const safeDays = Math.max(1, parseInt(days, 10) || 7);
       const sql = `
         SELECT
           a.*,
           u.username as author_name,
           u.avatar_url as author_avatar,
-          COALESCE(v.visits_count, 0) as visits_count
+          COALESCE(v.visits_count, 0) as visits_count,
+          GREATEST(
+            0,
+            COALESCE(s.current_stars, a.github_stars, 0) - COALESCE(s.baseline_stars, COALESCE(s.current_stars, a.github_stars, 0))
+          )::int AS stars_growth_7d
         FROM ${tableName} a
         LEFT JOIN users u ON a.author_id = u.id
         LEFT JOIN (
@@ -248,17 +253,51 @@ export function createResourceModel(tableName) {
           WHERE resource_type = '${resourceType}'
           GROUP BY resource_id
         ) v ON v.resource_id = a.id
+        LEFT JOIN LATERAL (
+          SELECT
+            cur.stars AS current_stars,
+            COALESCE(prev.stars, earliest.stars, cur.stars) AS baseline_stars
+          FROM (
+            SELECT stars, snapshot_date
+            FROM resource_star_snapshots
+            WHERE resource_type = $4
+              AND resource_id = a.id
+            ORDER BY snapshot_date DESC
+            LIMIT 1
+          ) cur
+          LEFT JOIN LATERAL (
+            SELECT stars
+            FROM resource_star_snapshots
+            WHERE resource_type = $4
+              AND resource_id = a.id
+              AND snapshot_date <= (CURRENT_DATE - ($5::int))
+            ORDER BY snapshot_date DESC
+            LIMIT 1
+          ) prev ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT stars
+            FROM resource_star_snapshots
+            WHERE resource_type = $4
+              AND resource_id = a.id
+            ORDER BY snapshot_date ASC
+            LIMIT 1
+          ) earliest ON TRUE
+        ) s ON TRUE
         WHERE a.deleted_at IS NULL AND a.status = 'approved'
           AND ($2::text IS NULL OR a.source_type = $2)
           AND ($3::text IS NULL OR a.source_platform = $3)
         ORDER BY
-          CASE WHEN a.source_type = 'external' THEN a.github_stars ELSE 0 END DESC NULLS LAST,
+          CASE WHEN a.source_type = 'external' THEN GREATEST(
+            0,
+            COALESCE(s.current_stars, a.github_stars, 0) - COALESCE(s.baseline_stars, COALESCE(s.current_stars, a.github_stars, 0))
+          ) ELSE 0 END DESC NULLS LAST,
+          CASE WHEN a.source_type = 'external' THEN COALESCE(s.current_stars, a.github_stars, 0) ELSE 0 END DESC NULLS LAST,
           CASE WHEN a.source_type = 'external' THEN COALESCE(v.visits_count, 0) ELSE a.downloads_count END DESC,
           a.rating_average DESC,
           a.created_at DESC
         LIMIT $1
       `;
-      const result = await query(sql, [limit, sourceType || null, sourcePlatform || null]);
+      const result = await query(sql, [limit, sourceType || null, sourcePlatform || null, resourceType, safeDays]);
       return result.rows;
     },
 

@@ -4,6 +4,14 @@
 
 ### ✅ 已完成并可测试的功能
 
+#### 0. 最新增量（2026-03-17）
+- ✅ 管理员用户管理页面（用户列表、角色筛选、试用配额管理）
+- ✅ 用户 Agent 试用“重置 +3 次”能力
+- ✅ 试用口径升级为“每用户每 Agent 每日 3 次 + 管理员补偿”
+- ✅ Agent 审核-发布-安装完整链路（异步发布队列）
+- ✅ 发布运维看板（全局任务、异常筛选、失败原因聚类、SLA、CSV）
+- ✅ 发布告警触发（阈值 + 冷却 + dry-run）
+
 #### 1. 认证系统
 - ✅ 用户注册（`/register`）
 - ✅ 用户登录（`/login`）
@@ -47,9 +55,21 @@
 - ✅ 用户可在下载前在线试用 Agent
 - ✅ 系统加载 Agent 配置文件（IDENTITY/RULES/MEMORY）作为 system prompt
 - ✅ 调用管理员配置的 LLM API 生成回复
-- ✅ 每用户每 Agent 限 3 次试用
+- ✅ 每用户每 Agent 每日基础 3 次试用
+- ✅ 管理员可按用户+Agent 增加当日试用次数（默认 +3）
 - ✅ 试用历史记录保存和加载
 - ✅ 前端聊天 Modal 界面
+
+#### 6.1 Agent 发布分发与运维 ⭐ 新增
+- ✅ 自动审核 + 人工审核 + 发布状态流转
+- ✅ 发布任务队列（queued/running/succeeded/failed）
+- ✅ 发布失败重试
+- ✅ 安装命令生成与短期 token 下载
+- ✅ 全局发布任务看板（含异常筛选）
+- ✅ 失败原因聚类 TopN
+- ✅ SLA 指标（窗口失败率、平均耗时）
+- ✅ 运维 CSV 导出
+- ✅ 发布告警通知（站内信）
 
 #### 7. Agent 包内容预览
 - ✅ 在线预览 Agent zip 包中的 markdown 文件
@@ -96,6 +116,10 @@
   - ✅ 支持 Anthropic 和 OpenAI 兼容 API
 - ✅ **数据同步**
   - ✅ GitHub / OpenClaw 数据自动同步
+- ✅ **用户管理** ⭐ 新增
+  - ✅ 用户列表（分页/搜索/角色筛选）
+  - ✅ 用户试用额度查看（按 Agent）
+  - ✅ 用户 Agent 试用次数重置（+3）
 
 #### 13. 定制开发
 - ✅ 需求提交表单（`/custom-order`）
@@ -138,6 +162,8 @@
 | `/api/agents/:id/rate` | POST | 评价 Agent |
 | `/api/agents/:id/trial` | POST | 试用 Agent |
 | `/api/agents/:id/trial/history` | GET | 试用历史 |
+| `/api/agents/:id/install-command` | POST | 获取安装命令 |
+| `/api/agents/install/:token/download` | GET | 通过安装 token 下载 |
 | `/api/agents/upload` | POST | 上传 Agent |
 | `/api/skills/upload` | POST | 上传 Skill |
 | `/api/mcps/upload` | POST | 上传 MCP |
@@ -152,6 +178,12 @@
 | `/api/agents/admin/pending` | GET | 待审核 Agent |
 | `/api/agents/admin/:id/approve` | POST | 批准 Agent |
 | `/api/agents/admin/:id/reject` | POST | 拒绝 Agent |
+| `/api/agents/admin/:id/publish` | POST | 发布 Agent（异步） |
+| `/api/agents/admin/:id/publish-jobs` | GET | 查看 Agent 发布任务 |
+| `/api/agents/admin/publish-jobs` | GET | 全局发布任务 |
+| `/api/agents/admin/publish-jobs/summary` | GET | 发布运维汇总 |
+| `/api/agents/admin/publish-jobs/:jobId/retry` | POST | 重试发布任务 |
+| `/api/agents/admin/publish-jobs/alerts/trigger` | POST | 触发发布告警 |
 | `/api/reviews` | GET | 所有评价 |
 | `/api/reviews/:id/approve` | POST | 批准评价 |
 | `/api/reviews/:id/reject` | POST | 拒绝评价 |
@@ -162,6 +194,9 @@
 | `/api/admin/llm-configs/:id/activate` | POST | 激活 LLM 配置 |
 | `/api/admin/llm-configs/:id` | DELETE | 删除 LLM 配置 |
 | `/api/admin/sync-*` | GET/POST | 数据同步 |
+| `/api/users/admin/all` | GET | 用户列表 |
+| `/api/users/admin/:userId/trial-quotas` | GET | 用户每日试用额度 |
+| `/api/users/admin/:userId/agents/:agentId/trial-quota/grant` | POST | 用户试用额度 +3 |
 
 ---
 

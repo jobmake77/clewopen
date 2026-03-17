@@ -19,7 +19,7 @@ export const fetchMcpDetail = createAsyncThunk(
 
 export const fetchTrendingMcps = createAsyncThunk(
   'mcp/fetchTrendingMcps',
-  async ({ limit = 10, days = 30 } = {}) => {
+  async ({ limit = 10, days = 7 } = {}) => {
     const response = await getTrendingMcps({ limit, days })
     return response.data
   }

@@ -15,7 +15,9 @@ let lastSyncTime = null
 let nextSyncTime = null
 let syncTimer = null
 const syncHistory = [] // 最近 20 条
-const SYNC_INTERVAL = 24 * 60 * 60 * 1000 // 24h
+const syncIntervalMinutes = Math.max(5, Number.parseInt(process.env.SYNC_INTERVAL_MINUTES || '1440', 10))
+const SYNC_INTERVAL = syncIntervalMinutes * 60 * 1000
+const RUN_SYNC_ON_START = String(process.env.SYNC_RUN_ON_START || 'true').toLowerCase() !== 'false'
 const MAX_HISTORY = 20
 
 // Openclaw pagination state — persists across syncs to cover all users incrementally
@@ -449,6 +451,21 @@ async function upsertOpenclawSkills(skills) {
   return { inserted, updated }
 }
 
+async function snapshotResourceStars(tableName, resourceType) {
+  await query(
+    `INSERT INTO resource_star_snapshots (resource_type, resource_id, stars, snapshot_date)
+     SELECT $1, id, COALESCE(github_stars, 0), CURRENT_DATE
+     FROM ${tableName}
+     WHERE deleted_at IS NULL
+       AND status = 'approved'
+     ON CONFLICT (resource_type, resource_id, snapshot_date)
+     DO UPDATE SET
+       stars = EXCLUDED.stars,
+       updated_at = CURRENT_TIMESTAMP`,
+    [resourceType]
+  )
+}
+
 // ─── Public API ──────────────────────────────────────────
 
 export async function runSync() {
@@ -472,6 +489,10 @@ export async function runSync() {
     // Skill — from openclaw/skills
     const openclawSync = await fetchOpenclawSkills()
     const openclawResult = await upsertOpenclawSkills(openclawSync.skills)
+
+    // Snapshot stars for 7-day growth ranking
+    await snapshotResourceStars('skills', 'skill')
+    await snapshotResourceStars('mcps', 'mcp')
 
     const duration = Date.now() - startTime
     lastSyncTime = new Date()
@@ -520,6 +541,7 @@ export function getSyncStatus() {
     lastSyncTime: lastSyncTime?.toISOString() || null,
     nextSyncTime: nextSyncTime?.toISOString() || null,
     isSyncing,
+    intervalMinutes: syncIntervalMinutes,
   }
 }
 
@@ -532,14 +554,20 @@ export function startScheduler() {
 
   nextSyncTime = new Date(Date.now() + SYNC_INTERVAL)
 
+  if (RUN_SYNC_ON_START) {
+    runSync().catch((error) => {
+      logger.error(`启动时自动同步失败: ${error.message}`)
+    })
+  }
+
   syncTimer = setInterval(async () => {
     logger.info('定时同步任务触发')
     nextSyncTime = new Date(Date.now() + SYNC_INTERVAL)
     await runSync()
   }, SYNC_INTERVAL)
 
-  logger.info('数据同步定时器已启动，间隔 24 小时')
-  console.log('🔄 数据同步定时器已启动，间隔 24 小时')
+  logger.info(`数据同步定时器已启动，间隔 ${syncIntervalMinutes} 分钟`)
+  console.log(`🔄 数据同步定时器已启动，间隔 ${syncIntervalMinutes} 分钟`)
 }
 
 export function stopScheduler() {

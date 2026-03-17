@@ -1,6 +1,6 @@
 # OpenCLEW 当前状态文档
 
-**更新时间**: 2026-03-13
+**更新时间**: 2026-03-17
 **Git 分支**: main
 
 ---
@@ -13,6 +13,56 @@ Frontend (React 18 + Vite)  →  Backend (Express + Node.js)  →  PostgreSQL + 
 ```
 
 ## 最近完成的工作
+
+### Phase 4.6: 管理员用户管理 + 试用配额重置 ✅ (2026-03-17)
+
+**改动概要**：新增管理员“用户管理”页面；试用次数从“历史累计 3 次”升级为“每用户每 Agent 每日 3 次（Asia/Shanghai）+ 管理员补偿次数”。
+
+- DB 迁移 014：新增 `agent_trial_quota_grants`（管理员补偿记录）
+- 新增管理员用户 API：
+  - `GET /api/users/admin/all`
+  - `GET /api/users/admin/:userId/trial-quotas`
+  - `POST /api/users/admin/:userId/agents/:agentId/trial-quota/grant`
+- 试用计数逻辑统一改为“按日配额”：
+  - `/api/agents/:id/trial`
+  - `/api/agents/:id/trial/history`
+  - session-based trial orchestrator
+- 前端 Admin 新增“用户管理”Tab：
+  - 用户列表（搜索/角色筛选）
+  - 用户 Agent 试用管理
+  - “重置 +3 次”按钮
+
+### Phase 4.5: 发布运维看板 + 告警闭环 ✅ (2026-03-17)
+
+**改动概要**：上线独立发布运维页面，支持全局任务运维、异常定位、SLA 监控、站内告警。
+
+- 全局发布任务接口：
+  - `GET /api/agents/admin/publish-jobs`（状态/关键字/异常/时间窗口）
+  - `GET /api/agents/admin/publish-jobs/summary`（总览、失败 Agent Top、失败原因聚类、耗时统计）
+- 告警触发接口：
+  - `POST /api/agents/admin/publish-jobs/alerts/trigger`
+  - 支持阈值、冷却、dry-run 演练
+- 前端“发布运维”页面：
+  - 自动刷新、异常筛选、失败原因点击过滤
+  - SLA 指标（窗口失败率、平均耗时）
+  - CSV 导出
+  - 一键触发告警/告警演练
+
+### Phase 4.4: Agent 发布分发链路 ✅ (2026-03-16)
+
+**改动概要**：打通 Agent 上传后审核、发布任务队列、安装命令、短期下载 token、任务重试全链路。
+
+- DB 迁移：
+  - `012_add_agent_review_publish_and_install_tokens.sql`
+  - `013_create_agent_publish_jobs.sql`
+- 新增 `agent_publish_jobs`、`agent_install_tokens`
+- Agent 模型扩展审核/发布状态字段
+- 关键接口：
+  - `POST /api/agents/admin/:id/publish`
+  - `GET /api/agents/admin/:id/publish-jobs`
+  - `POST /api/agents/admin/publish-jobs/:jobId/retry`
+  - `POST /api/agents/:id/install-command`
+  - `GET /api/agents/install/:token/download`
 
 ### Phase 4.3: Skill / MCP 目录模型重构 ✅ (2026-03-13)
 
@@ -72,6 +122,9 @@ Frontend (React 18 + Vite)  →  Backend (Express + Node.js)  →  PostgreSQL + 
 | agent_trials | Agent 试用记录（新） |
 | llm_configs | LLM 服务配置（新） |
 | resource_visits | Skill/MCP 外部资源访问记录（新） |
+| agent_install_tokens | Agent 安装下载 token（新） |
+| agent_publish_jobs | Agent 发布任务队列（新） |
+| agent_trial_quota_grants | 每日试用补偿记录（新） |
 
 已删除：orders 表、所有 price 相关列
 
@@ -106,6 +159,12 @@ Frontend (React 18 + Vite)  →  Backend (Express + Node.js)  →  PostgreSQL + 
 - `DELETE /api/admin/llm-configs/:id` — 删除（新）
 - `GET/POST /api/admin/sync-*` — 数据同步
 - `GET/POST /api/agents/admin/*` — Agent 审核
+- `GET /api/agents/admin/publish-jobs` — 全局发布任务（新）
+- `GET /api/agents/admin/publish-jobs/summary` — 发布运维汇总（新）
+- `POST /api/agents/admin/publish-jobs/alerts/trigger` — 发布告警触发（新）
+- `GET /api/users/admin/all` — 用户列表（新）
+- `GET /api/users/admin/:userId/trial-quotas` — 用户试用额度（新）
+- `POST /api/users/admin/:userId/agents/:agentId/trial-quota/grant` — 用户试用重置+3（新）
 
 ---
 
@@ -132,7 +191,7 @@ cd frontend && npm run dev
 1. 管理员登录 → 管理控制台 → LLM 配置 Tab
 2. 新增 LLM 配置（填写 provider、API URL、API Key、Model ID）→ 点击"激活"
 3. 用户访问已审核 Agent 详情页 → 点击"试用 Agent" → 发送消息
-4. 每用户每 Agent 限 3 次试用
+4. 每用户每 Agent 每日基础 3 次试用；管理员可按用户+Agent 增加当日额度（+3）
 
 ## Skill / MCP 当前产品语义
 

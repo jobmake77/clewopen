@@ -148,9 +148,10 @@ export function createResourceController(Model, resourceType, resourceLabel) {
 
   const getTrendingItems = async (req, res, next) => {
     try {
-      const { limit = 10, sourceType, sourcePlatform } = req.query;
+      const { limit = 10, days = 7, sourceType, sourcePlatform } = req.query;
       const items = await Model.getTrending({
         limit: parseInt(limit),
+        days: parseInt(days),
         sourceType,
         sourcePlatform,
       });

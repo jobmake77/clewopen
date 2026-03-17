@@ -212,6 +212,7 @@ function DataSync() {
           </Button>
           {status?.nextSyncTime && (
             <span style={{ color: '#999' }}>
+              自动同步间隔: {status?.intervalMinutes || 1440} 分钟，
               下次自动同步: {dayjs(status.nextSyncTime).format('YYYY-MM-DD HH:mm:ss')}
             </span>
           )}

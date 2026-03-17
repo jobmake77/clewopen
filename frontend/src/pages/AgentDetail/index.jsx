@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress } from 'antd'
-import { DownloadOutlined, StarOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined } from '@ant-design/icons'
+import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
 import api from '../../services/api'
@@ -173,9 +173,11 @@ function AgentDetail() {
   const loadReviews = async () => {
     setLoadingReviews(true)
     try {
-      const response = await api.get(`/agents/${id}/reviews`)
+      const response = await api.get(`/agents/${id}/reviews`, {
+        params: { page: 1, pageSize: 1000 },
+      })
       if (response.success) {
-        setReviews(response.data)
+        setReviews(response.data?.reviews || [])
       }
     } catch (error) {
       console.error('Failed to load reviews:', error)
@@ -822,13 +824,9 @@ function AgentDetail() {
     },
     {
       key: 'reviews',
-      label: `评价 (${reviews.length})`,
+      label: '评价',
       children: (
         <div>
-          <Button type="primary" onClick={handleRate} style={{ marginBottom: 16 }}>
-            写评价
-          </Button>
-
           {loadingReviews ? (
             <Spin />
           ) : reviews.length > 0 ? (
@@ -847,6 +845,11 @@ function AgentDetail() {
           ) : (
             <p>暂无评价</p>
           )}
+
+          <Divider />
+          <Button type="primary" onClick={handleRate}>
+            写评价
+          </Button>
         </div>
       ),
     },
@@ -935,15 +938,6 @@ function AgentDetail() {
               onClick={openTrialModal}
             >
               试用 Agent
-            </Button>
-
-            <Button
-              size="large"
-              block
-              icon={<StarOutlined />}
-              onClick={handleRate}
-            >
-              写评价
             </Button>
 
             <Divider />
