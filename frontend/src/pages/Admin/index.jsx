@@ -8,6 +8,7 @@ import DataSync from './DataSync'
 import LlmSettings from './LlmSettings'
 import TrialRuntime from './TrialRuntime'
 import PublishOps from './PublishOps'
+import UserManagement from './UserManagement'
 import { getPendingAgents, getAllReviews, getAllAgentsAdmin } from '../../services/adminService'
 import './index.css'
 
@@ -73,6 +74,11 @@ function Admin() {
       key: 'publish-ops',
       label: '发布运维',
       children: <PublishOps />
+    },
+    {
+      key: 'users',
+      label: '用户管理',
+      children: <UserManagement />
     }
   ]
 

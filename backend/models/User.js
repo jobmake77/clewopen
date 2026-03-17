@@ -23,6 +23,58 @@ export const UserModel = {
     return result.rows[0] || null;
   },
 
+  async findAllAdmin({ page = 1, pageSize = 20, search = '', role }) {
+    const safePage = Math.max(1, parseInt(page, 10) || 1);
+    const safePageSize = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20));
+    const offset = (safePage - 1) * safePageSize;
+
+    const conditions = ['deleted_at IS NULL'];
+    const params = [];
+    let idx = 1;
+
+    if (role && ['user', 'developer', 'admin'].includes(role)) {
+      conditions.push(`role = $${idx}`);
+      params.push(role);
+      idx += 1;
+    }
+
+    const normalizedSearch = String(search || '').trim();
+    if (normalizedSearch) {
+      conditions.push(`(
+        username ILIKE $${idx}
+        OR email ILIKE $${idx}
+      )`);
+      params.push(`%${normalizedSearch}%`);
+      idx += 1;
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const listSql = `
+      SELECT id, username, email, role, avatar_url, bio, created_at, updated_at, last_login_at
+      FROM users
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${idx} OFFSET $${idx + 1}
+    `;
+
+    const countSql = `
+      SELECT COUNT(*) as total
+      FROM users
+      ${whereClause}
+    `;
+
+    const listResult = await query(listSql, [...params, safePageSize, offset]);
+    const countResult = await query(countSql, params);
+
+    return {
+      users: listResult.rows,
+      total: parseInt(countResult.rows[0]?.total || '0', 10),
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.ceil((parseInt(countResult.rows[0]?.total || '0', 10)) / safePageSize),
+    };
+  },
+
   // Create new user
   async create(userData) {
     // Hash password

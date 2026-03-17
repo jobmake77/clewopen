@@ -1,8 +1,20 @@
 import express from 'express'
-import { getUserById, getUserDownloads, getUserAgents } from './controller.js'
-import { authenticate } from '../../middleware/auth.js'
+import {
+  getUserById,
+  getUserDownloads,
+  getUserAgents,
+  getUsersAdmin,
+  getUserAgentTrialQuotasAdmin,
+  grantUserAgentTrialQuotaAdmin,
+} from './controller.js'
+import { authenticate, authorize } from '../../middleware/auth.js'
 
 const router = express.Router()
+
+// 管理员路由（固定路径优先）
+router.get('/admin/all', authenticate, authorize('admin'), getUsersAdmin)
+router.get('/admin/:userId/trial-quotas', authenticate, authorize('admin'), getUserAgentTrialQuotasAdmin)
+router.post('/admin/:userId/agents/:agentId/trial-quota/grant', authenticate, authorize('admin'), grantUserAgentTrialQuotaAdmin)
 
 // 获取用户信息
 router.get('/:id', getUserById)

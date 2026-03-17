@@ -6,6 +6,18 @@ export const getAllAgentsAdmin = (params) => {
   return api.get('/agents/admin/all', { params })
 }
 
+export const getAllUsersAdmin = (params) => {
+  return api.get('/users/admin/all', { params })
+}
+
+export const getUserTrialQuotasAdmin = (userId) => {
+  return api.get(`/users/admin/${userId}/trial-quotas`)
+}
+
+export const grantUserAgentTrialQuotaAdmin = (userId, agentId, payload) => {
+  return api.post(`/users/admin/${userId}/agents/${agentId}/trial-quota/grant`, payload || {})
+}
+
 export const getPendingAgents = (params) => {
   return api.get('/agents/admin/pending', { params })
 }

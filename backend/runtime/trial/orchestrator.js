@@ -1,4 +1,5 @@
 import AgentModel from '../../models/Agent.js'
+import AgentTrialModel from '../../models/AgentTrial.js'
 import TrialSessionModel from '../../models/TrialSession.js'
 import TrialSessionMessageModel from '../../models/TrialSessionMessage.js'
 import { getTrialRuntimeConfig } from './config.js'
@@ -19,7 +20,6 @@ import { runPromptSession } from './promptRunner.js'
 import { ensureAgentPackageUsable } from '../../utils/agentPackageReader.js'
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
-const MAX_TRIALS = 3
 const MAX_ACTIVE_SESSIONS_PER_USER = 1
 const PROVISIONING_POLL_INTERVAL_MS = 2000
 const PROVISIONING_PROGRESS_INTERVAL_MS = 5000
@@ -680,8 +680,8 @@ export async function createTrialSession({ userId, agentId }) {
 
   await ensureAgentPackageUsable(agent.package_url)
 
-  const usedCount = await TrialSessionModel.countUserTrials(userId, agentId)
-  if (usedCount >= MAX_TRIALS) {
+  const quota = await AgentTrialModel.getDailyQuotaSummary(userId, agentId)
+  if (quota.remainingTrials <= 0) {
     const err = new Error('试用次数已用完')
     err.statusCode = 429
     err.remainingTrials = 0
@@ -697,7 +697,7 @@ export async function createTrialSession({ userId, agentId }) {
 
     return {
       session: existingSession,
-      remainingTrials: Math.max(0, MAX_TRIALS - usedCount),
+      remainingTrials: quota.remainingTrials,
     }
   }
 
@@ -727,7 +727,7 @@ export async function createTrialSession({ userId, agentId }) {
 
   return {
     session,
-    remainingTrials: Math.max(0, MAX_TRIALS - usedCount - 1),
+    remainingTrials: Math.max(0, quota.remainingTrials - 1),
   }
 }
 

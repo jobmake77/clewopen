@@ -4,8 +4,6 @@ import { extractAgentFiles } from '../../utils/agentPackageReader.js'
 import { callLLM } from '../../services/llmService.js'
 import { logger } from '../../config/logger.js'
 
-const MAX_TRIALS = 3
-
 /**
  * POST /agents/:id/trial
  * 试用 Agent：发送一条消息，获取 LLM 回复
@@ -29,12 +27,12 @@ export const trialAgent = async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Agent 尚未通过审核' })
     }
 
-    // 检查试用次数
-    const usedCount = await AgentTrialModel.countTrials(userId, id)
-    if (usedCount >= MAX_TRIALS) {
+    // 检查今日试用次数（基础 3 次 + 管理员补偿）
+    const quota = await AgentTrialModel.getDailyQuotaSummary(userId, id)
+    if (quota.remainingTrials <= 0) {
       return res.status(429).json({
         success: false,
-        error: '试用次数已用完',
+        error: '今日试用次数已用完',
         remainingTrials: 0,
       })
     }
@@ -71,7 +69,7 @@ export const trialAgent = async (req, res, next) => {
       success: true,
       data: {
         response: responseContent,
-        remainingTrials: MAX_TRIALS - usedCount - 1,
+        remainingTrials: Math.max(0, quota.remainingTrials - 1),
       },
     })
   } catch (error) {
@@ -90,14 +88,15 @@ export const getTrialHistory = async (req, res, next) => {
     const userId = req.user.id
 
     const history = await AgentTrialModel.getHistory(userId, id)
-    const usedCount = history.length
+    const quota = await AgentTrialModel.getDailyQuotaSummary(userId, id)
 
     res.json({
       success: true,
       data: {
         history,
-        usedCount,
-        remainingTrials: Math.max(0, MAX_TRIALS - usedCount),
+        usedCount: quota.usedCount,
+        maxTrials: quota.maxTrials,
+        remainingTrials: quota.remainingTrials,
       },
     })
   } catch (error) {
