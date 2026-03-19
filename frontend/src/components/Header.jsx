@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Layout as AntLayout, Menu, Button, Dropdown, Avatar, Space, Badge, List, Popover, Empty } from 'antd'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useSelector, useDispatch } from 'react-redux'
-import { HomeOutlined, ShoppingOutlined, UserOutlined, LogoutOutlined, LoginOutlined, UploadOutlined, SettingOutlined, BellOutlined, ThunderboltOutlined, ApiOutlined, PlusOutlined } from '@ant-design/icons'
+import { HomeOutlined, ShoppingOutlined, UserOutlined, LogoutOutlined, LoginOutlined, SettingOutlined, BellOutlined, ThunderboltOutlined, ApiOutlined, PlusOutlined } from '@ant-design/icons'
 import { logout } from '../store/slices/authSlice'
 import api from '../services/api'
 
@@ -10,6 +10,7 @@ const { Header: AntHeader } = AntLayout
 
 function Header() {
   const navigate = useNavigate()
+  const location = useLocation()
   const dispatch = useDispatch()
   const { isAuthenticated, user } = useSelector((state) => state.auth)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -74,6 +75,13 @@ function Header() {
       onClick: () => navigate('/custom-order'),
     },
   ]
+  const inferSelectedMenuKey = (() => {
+    if (location.pathname === '/' || location.pathname.startsWith('/agent/')) return 'home'
+    if (location.pathname.startsWith('/skills')) return 'skills'
+    if (location.pathname.startsWith('/mcps')) return 'mcps'
+    if (location.pathname.startsWith('/custom-order')) return 'custom'
+    return ''
+  })()
 
   const handleLogout = () => {
     dispatch(logout())
@@ -123,14 +131,26 @@ function Header() {
   ]
 
   return (
-    <AntHeader style={{ display: 'flex', alignItems: 'center', background: '#fff', borderBottom: '1px solid #f0f0f0' }}>
-      <div style={{ fontSize: 20, fontWeight: 'bold', marginRight: 50, cursor: 'pointer' }} onClick={() => navigate('/')}>
-        OpenCLEW
+    <AntHeader style={{ display: 'flex', alignItems: 'center', padding: '0 20px', height: 64 }}>
+      <div
+        style={{
+          fontSize: 24,
+          marginRight: 24,
+          cursor: 'pointer',
+          fontFamily: '"Playfair Display", Georgia, serif',
+          fontWeight: 600,
+          letterSpacing: '-0.02em',
+        }}
+        onClick={() => navigate('/')}
+      >
+        ClewOpen
       </div>
       <Menu
         mode="horizontal"
         items={menuItems}
-        style={{ flex: 1, border: 'none' }}
+        selectedKeys={inferSelectedMenuKey ? [inferSelectedMenuKey] : []}
+        className="main-nav-menu"
+        style={{ flex: 1, border: 'none', background: 'transparent', minWidth: 0 }}
       />
       {isAuthenticated ? (
         <Space size="middle">
@@ -164,10 +184,10 @@ function Header() {
                     loading={notifLoading}
                     dataSource={notifications}
                     renderItem={(item) => (
-                      <List.Item style={{ background: item.read_at ? 'transparent' : '#f0f5ff', padding: '8px' }}>
+                      <List.Item style={{ background: item.read_at ? 'transparent' : '#e9efff', padding: '8px', borderRadius: 8 }}>
                         <List.Item.Meta
                           title={<span style={{ fontSize: 13 }}>{item.title}</span>}
-                          description={<span style={{ fontSize: 12, color: '#999' }}>{item.content}</span>}
+                          description={<span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>{item.content}</span>}
                         />
                       </List.Item>
                     )}
@@ -185,13 +205,13 @@ function Header() {
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
             <Space style={{ cursor: 'pointer' }}>
               <Avatar icon={<UserOutlined />} src={user?.avatar} />
-              <span>{user?.username}</span>
+              <span className="header-username">{user?.username}</span>
             </Space>
           </Dropdown>
         </Space>
       ) : (
         <Space>
-          <Button type="text" icon={<LoginOutlined />} onClick={() => navigate('/login')}>
+          <Button type="text" icon={<LoginOutlined />} onClick={() => navigate('/login')} style={{ borderRadius: 999 }}>
             登录
           </Button>
           <Button type="primary" onClick={() => navigate('/register')}>

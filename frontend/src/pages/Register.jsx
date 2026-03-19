@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
 import { Form, Input, Button, Card, message, Select, Divider } from 'antd'
@@ -41,7 +41,15 @@ export default function Register() {
 
   return (
     <div className="register-container">
-      <Card className="register-card" title="注册 OpenCLEW">
+      <Card
+        className="register-card cream-panel"
+        title={
+          <div>
+            <p className="section-label" style={{ marginBottom: 8 }}>Create Account</p>
+            <div style={{ fontSize: 'clamp(26px, 4.8vw, 30px)', fontFamily: '"Playfair Display", Georgia, serif' }}>注册 ClewOpen</div>
+          </div>
+        }
+      >
         <Form
           form={form}
           name="register"

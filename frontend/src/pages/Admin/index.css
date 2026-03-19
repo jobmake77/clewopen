@@ -1,9 +1,76 @@
 .admin-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 10px 0 24px;
 }
 
 .admin-container h1 {
-  margin-bottom: 24px;
+  margin: 0 0 24px;
+  font-size: 42px;
+}
+
+.admin-container .ant-tabs-nav {
+  margin-bottom: 18px;
+}
+
+.admin-container .ant-tabs-tab {
+  border-radius: 999px !important;
+  padding-inline: 14px !important;
+}
+
+.admin-container .ant-tabs-tab-active {
+  background: #ece3d7;
+}
+
+.admin-section {
+  display: block;
+}
+
+.admin-section .ant-space {
+  width: 100%;
+}
+
+.admin-section .ant-table {
+  border-radius: 12px;
+}
+
+.admin-section .ant-table-container {
+  border: 1px solid var(--cream-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.admin-section .ant-table-thead > tr > th {
+  background: #f4ede2 !important;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.admin-section .ant-table-tbody > tr:hover > td {
+  background: #f8f4ed !important;
+}
+
+.admin-section .ant-card + .ant-card {
+  margin-top: 12px;
+}
+
+.admin-section .ant-space {
+  gap: 8px !important;
+}
+
+.admin-section .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: #f4ede2 !important;
+}
+
+.admin-section .ant-alert {
+  border-radius: 12px;
+}
+
+.admin-section .ant-input,
+.admin-section .ant-input-affix-wrapper,
+.admin-section .ant-select-selector,
+.admin-section .ant-picker,
+.admin-section .ant-input-number {
+  border-radius: 10px !important;
 }

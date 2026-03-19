@@ -1,6 +1,7 @@
 .user-center {
   max-width: 1200px;
   margin: 0 auto;
+  padding-top: 10px;
 }
 
 .profile-header {
@@ -9,7 +10,7 @@
   gap: 24px;
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--cream-border);
 }
 
 .profile-info h2 {
@@ -32,12 +33,12 @@
 .detail-item strong {
   display: block;
   margin-bottom: 4px;
-  color: #333;
+  color: var(--ink);
 }
 
 .detail-item p {
   margin: 0;
-  color: #666;
+  color: var(--ink-muted);
 }
 
 .profile-actions {

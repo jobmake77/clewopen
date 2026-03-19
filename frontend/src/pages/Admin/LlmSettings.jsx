@@ -227,9 +227,9 @@ function LlmSettings() {
   ]
 
   return (
-    <div>
+    <div className="admin-section">
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <p style={{ color: '#666', margin: 0 }}>配置用于 Agent 试用沙盒的多 Provider 路由池。系统会优先使用同角色下已激活且优先级最高的配置，失败时可自动切换到备用配置。</p>
+        <p style={{ color: 'var(--ink-muted)', margin: 0 }}>配置用于 Agent 试用沙盒的多 Provider 路由池。系统会优先使用同角色下已激活且优先级最高的配置，失败时可自动切换到备用配置。</p>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增配置</Button>
       </div>
 

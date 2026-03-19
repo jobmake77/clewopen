@@ -665,7 +665,7 @@ function TrialRuntime() {
   ]
 
   return (
-    <div>
+    <div className="admin-section">
       <Alert
         style={{ marginBottom: 16 }}
         type={healthMeta.alertType}
@@ -686,44 +686,44 @@ function TrialRuntime() {
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="Warm Pool"
               value={fillRate}
               prefix={<ThunderboltOutlined />}
-              valueStyle={{ color: warmCount === Number(pool?.size || 0) ? '#52c41a' : '#1890ff' }}
+              valueStyle={{ color: warmCount === Number(pool?.size || 0) ? 'var(--status-success)' : 'var(--status-info)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="命中率"
               value={hitRate ?? 0}
               precision={1}
               suffix="%"
               prefix={<RocketOutlined />}
-              valueStyle={{ color: (hitRate ?? 0) >= 80 ? '#52c41a' : '#faad14' }}
+              valueStyle={{ color: (hitRate ?? 0) >= 80 ? 'var(--status-success)' : 'var(--status-warning)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="冷启动回退"
               value={fallbackCount}
               prefix={<WarningOutlined />}
-              valueStyle={{ color: fallbackCount > 0 ? '#fa8c16' : '#52c41a' }}
+              valueStyle={{ color: fallbackCount > 0 ? 'var(--status-warning)' : 'var(--status-success)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="当前异常 Slot"
               value={anomalyCount}
               prefix={<ClusterOutlined />}
-              valueStyle={{ color: anomalyCount > 0 ? '#ff4d4f' : '#52c41a' }}
+              valueStyle={{ color: anomalyCount > 0 ? 'var(--status-danger)' : 'var(--status-success)' }}
             />
           </Card>
         </Col>
@@ -731,18 +731,18 @@ function TrialRuntime() {
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="Gateway-Hot 就绪"
               value={gatewayHotReadyCount}
               suffix={`/ ${gatewayHotTargetCount}`}
               prefix={<ThunderboltOutlined />}
-              valueStyle={{ color: gatewayHotReadyCount >= gatewayHotTargetCount ? '#52c41a' : '#fa8c16' }}
+              valueStyle={{ color: gatewayHotReadyCount >= gatewayHotTargetCount ? 'var(--status-success)' : 'var(--status-warning)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="使用中 Slot"
               value={leasedCount}
@@ -751,22 +751,22 @@ function TrialRuntime() {
           </Card>
         </Col>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="陈旧租约回收"
               value={Number(metrics.staleLeaseReclaims || 0)}
               prefix={<WarningOutlined />}
-              valueStyle={{ color: Number(metrics.staleLeaseReclaims || 0) > 0 ? '#fa8c16' : '#52c41a' }}
+              valueStyle={{ color: Number(metrics.staleLeaseReclaims || 0) > 0 ? 'var(--status-warning)' : 'var(--status-success)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card loading={loading}>
+          <Card loading={loading} className="cream-panel">
             <Statistic
               title="排空 / 修复中"
               value={drainingCount + Number(summary.resetting || 0)}
               prefix={<WarningOutlined />}
-              valueStyle={{ color: drainingCount > 0 ? '#faad14' : '#52c41a' }}
+              valueStyle={{ color: drainingCount > 0 ? 'var(--status-warning)' : 'var(--status-success)' }}
             />
           </Card>
         </Col>

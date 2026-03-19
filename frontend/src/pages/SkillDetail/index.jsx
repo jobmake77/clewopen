@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, message, Space } from 'antd'
@@ -30,17 +30,12 @@ function SkillDetail() {
   const [openingSource, setOpeningSource] = useState(false)
   const [form] = Form.useForm()
 
-  useEffect(() => {
-    dispatch(fetchSkillDetail(id))
-    loadReviews()
-  }, [dispatch, id])
-
   const tags = useMemo(() => {
     if (!current?.tags) return []
     return Array.isArray(current.tags) ? current.tags : String(current.tags).split(',').map(tag => tag.trim()).filter(Boolean)
   }, [current])
 
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     setLoadingReviews(true)
     try {
       const response = await api.get(`/skills/${id}/reviews`)
@@ -50,7 +45,12 @@ function SkillDetail() {
     } finally {
       setLoadingReviews(false)
     }
-  }
+  }, [id])
+
+  useEffect(() => {
+    dispatch(fetchSkillDetail(id))
+    loadReviews()
+  }, [dispatch, id, loadReviews])
 
   const handleDownload = async () => {
     if (!isAuthenticated) {
@@ -148,7 +148,7 @@ function SkillDetail() {
           <p>{current.description}</p>
 
           <h3>接入方式</h3>
-          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4, whiteSpace: 'pre-wrap' }}>
+          <pre style={{ background: 'var(--surface-muted)', padding: 16, borderRadius: 8, whiteSpace: 'pre-wrap' }}>
 {`# 在 Agent 的 manifest.json 中声明依赖
 "dependencies": {
   "skills": ["${current.slug || current.name}"]
@@ -178,7 +178,7 @@ function SkillDetail() {
                 <Rate disabled value={review.rating} style={{ marginLeft: 16, fontSize: 14 }} />
               </div>
               <p>{review.comment}</p>
-              <p style={{ color: '#999', fontSize: 12 }}>{new Date(review.created_at).toLocaleDateString()}</p>
+              <p style={{ color: 'var(--ink-muted)', fontSize: 12 }}>{new Date(review.created_at).toLocaleDateString()}</p>
             </Card>
           )) : <p>暂无评价</p>}
         </div>
@@ -187,17 +187,20 @@ function SkillDetail() {
   ]
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div className="page-shell" style={{ paddingTop: 10 }}>
+      <div style={{ marginBottom: 18 }}>
+        <p className="section-label">{current.category || 'Skill Detail'}</p>
+      </div>
       <Row gutter={24}>
         <Col span={16}>
-          <Card>
+          <Card className="cream-panel">
             <div style={{ marginBottom: 24 }}>
               <Space wrap size={[8, 8]} style={{ marginBottom: 16 }}>
                 <Tag color={isExternal ? 'geekblue' : 'blue'}>{sourceLabel}</Tag>
                 {current.category && <Tag color="green">{current.category}</Tag>}
                 {tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
               </Space>
-              <h1>{current.name}</h1>
+              <h1 style={{ fontSize: 'clamp(30px, 5.2vw, 42px)' }}>{current.name}</h1>
               <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
                 <span><Rate disabled value={Number(current.rating_average || 0)} /> ({current.reviews_count || 0} 评价)</span>
                 {isExternal ? (
@@ -215,9 +218,9 @@ function SkillDetail() {
           </Card>
         </Col>
         <Col span={8}>
-          <Card>
+          <Card className="cream-panel" style={{ position: 'sticky', top: 86 }}>
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ width: '100%', height: 200, background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 80, marginBottom: 16 }}>
+              <div style={{ width: '100%', height: 200, background: 'linear-gradient(135deg, var(--status-success) 0%, var(--accent-sage) 100%)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 80, marginBottom: 16, color: '#fff' }}>
                 S
               </div>
             </div>

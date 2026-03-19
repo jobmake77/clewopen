@@ -139,31 +139,31 @@ function DataSync() {
   }
 
   return (
-    <div>
+    <div className="admin-section">
       {/* 状态卡片 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="MCP 总数"
               value={status?.totalMcps ?? '-'}
               prefix={<DatabaseOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              valueStyle={{ color: 'var(--status-info)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="Skill 总数"
               value={status?.totalSkills ?? '-'}
               prefix={<DatabaseOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              valueStyle={{ color: 'var(--status-success)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="上次同步"
               value={status?.lastSyncTime ? dayjs(status.lastSyncTime).format('MM-DD HH:mm') : '未同步'}
@@ -172,7 +172,7 @@ function DataSync() {
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <div style={{ marginBottom: 8 }}>同步状态</div>
             <div style={{ fontSize: 24, lineHeight: '38px' }}>
               {syncStatusTag()}
@@ -183,7 +183,7 @@ function DataSync() {
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={12}>
-          <Card title="Skill 来源拆分" size="small">
+          <Card title="Skill 来源拆分" size="small" className="cream-panel">
             <p>外部资源: {status?.skillBreakdown?.external ?? 0}</p>
             <p>平台上传: {status?.skillBreakdown?.uploaded ?? 0}</p>
             <p>GitHub: {status?.skillBreakdown?.github ?? 0}</p>
@@ -191,7 +191,7 @@ function DataSync() {
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="MCP 来源拆分" size="small">
+          <Card title="MCP 来源拆分" size="small" className="cream-panel">
             <p>外部资源: {status?.mcpBreakdown?.external ?? 0}</p>
             <p>平台上传: {status?.mcpBreakdown?.uploaded ?? 0}</p>
           </Card>
@@ -199,7 +199,7 @@ function DataSync() {
       </Row>
 
       {/* 操作区 */}
-      <Card style={{ marginBottom: 24 }}>
+      <Card style={{ marginBottom: 24 }} className="cream-panel">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Button
             type="primary"
@@ -211,13 +211,13 @@ function DataSync() {
             手动同步
           </Button>
           {status?.nextSyncTime && (
-            <span style={{ color: '#999' }}>
+            <span style={{ color: 'var(--ink-muted)' }}>
               自动同步间隔: {status?.intervalMinutes || 1440} 分钟，
               下次自动同步: {dayjs(status.nextSyncTime).format('YYYY-MM-DD HH:mm:ss')}
             </span>
           )}
           {history[0]?.openclawIsPartial && (
-            <span style={{ color: '#999' }}>
+            <span style={{ color: 'var(--ink-muted)' }}>
               本轮 OpenClaw 为分批同步: {history[0]?.openclawProcessedRange?.start}-{history[0]?.openclawProcessedRange?.end} / {history[0]?.openclawProcessedRange?.totalUsers}
             </span>
           )}
@@ -228,7 +228,7 @@ function DataSync() {
       </Card>
 
       {/* 同步历史 */}
-      <Card title="同步历史">
+      <Card title="同步历史" className="cream-panel">
         <Table
           columns={columns}
           dataSource={history}

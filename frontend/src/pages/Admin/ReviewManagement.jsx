@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Table, Button, Tag, Modal, message, Space, Rate, Input } from 'antd'
 import { CheckOutlined, CloseOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { getAllReviews, approveReview, rejectReview, deleteReview } from '../../services/adminService'
@@ -13,17 +13,15 @@ function ReviewManagement() {
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [actionLoading, setActionLoading] = useState({})
+  const currentPage = pagination.current
+  const currentPageSize = pagination.pageSize
 
-  useEffect(() => {
-    loadReviews()
-  }, [pagination.current, pagination.pageSize])
-
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     setLoading(true)
     try {
       const response = await getAllReviews({
-        page: pagination.current,
-        pageSize: pagination.pageSize,
+        page: currentPage,
+        pageSize: currentPageSize,
         status: 'pending'
       })
       if (response.success) {
@@ -38,7 +36,11 @@ function ReviewManagement() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, currentPageSize])
+
+  useEffect(() => {
+    loadReviews()
+  }, [loadReviews])
 
   const handleApprove = (id) => {
     Modal.confirm({
@@ -205,7 +207,7 @@ function ReviewManagement() {
   ]
 
   return (
-    <div>
+    <div className="admin-section">
       <Table
         columns={columns}
         dataSource={reviews}

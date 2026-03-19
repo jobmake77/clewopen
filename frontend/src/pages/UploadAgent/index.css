@@ -1,29 +1,31 @@
 .upload-agent-container {
   min-height: calc(100vh - 64px);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 60px 20px;
+  background: transparent;
+  padding: 20px;
 }
 
 .upload-agent-content {
   max-width: 800px;
   margin: 0 auto;
-  background: white;
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--cream-card) 88%, #fff 12%);
+  border: 1px solid var(--cream-border);
+  border-radius: 14px;
   padding: 40px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .upload-agent-content h1 {
-  font-size: 32px;
+  font-size: 42px;
   font-weight: 600;
   margin-bottom: 8px;
-  color: #1a1a1a;
+  color: var(--ink);
+  font-family: 'Playfair Display', Georgia, serif;
 }
 
 .upload-agent-content .subtitle {
   font-size: 16px;
-  color: #666;
-  margin-bottom: 40px;
+  color: var(--ink-muted);
+  margin-bottom: 26px;
 }
 
 .tags-input {
@@ -48,14 +50,14 @@
   font-weight: 500;
 }
 
-.ant-btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
+.upload-agent-content .ant-btn-primary {
+  background: linear-gradient(135deg, #2f57cc, #1e4ccf);
+  border: 1px solid #24409f;
   height: 48px;
   font-size: 16px;
   font-weight: 500;
 }
 
-.ant-btn-primary:hover {
-  background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
+.upload-agent-content .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #244bb8, #163dab);
 }

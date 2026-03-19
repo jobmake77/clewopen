@@ -50,11 +50,12 @@ function McpMarket() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div className="page-shell">
       {/* 标题 */}
-      <div style={{ marginBottom: 24 }}>
-        <h1>MCP 库</h1>
-        <p style={{ color: '#666' }}>
+      <div style={{ marginBottom: 24, paddingTop: 12 }}>
+        <p className="section-label">MCP Library</p>
+        <h1 style={{ fontSize: 'clamp(30px, 5.2vw, 42px)', marginBottom: 8 }}>MCP 库</h1>
+        <p style={{ color: 'var(--ink-muted)' }}>
           发现和使用 MCP 服务包，为 Agent 提供外部能力接入
         </p>
       </div>

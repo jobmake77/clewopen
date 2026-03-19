@@ -22,7 +22,8 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
       hoverable
       onClick={() => onClick?.(item)}
       bodyStyle={{ padding: 16 }}
-      style={{ height: '100%' }}
+      style={{ height: '100%', borderRadius: 14 }}
+      className="cream-panel"
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* 顶部：头像/名称/外链图标 */}
@@ -36,18 +37,18 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
               {(item.author_name || item.name || '?')[0].toUpperCase()}
             </Avatar>
           )}
-          <span style={{ fontSize: 16, fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-            {item.name}
-          </span>
+            <span style={{ fontSize: 18, fontFamily: '"Playfair Display", Georgia, serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+              {item.name}
+            </span>
           {isExternal && !isUploadedResource && (
-            <LinkOutlined style={{ color: '#888', fontSize: 14, flexShrink: 0 }} />
+            <LinkOutlined style={{ color: 'var(--ink-muted)', fontSize: 14, flexShrink: 0 }} />
           )}
         </div>
 
         {/* 描述 */}
         <p
           style={{
-            color: '#666',
+            color: 'var(--ink-muted)',
             fontSize: 13,
             lineHeight: '20px',
             height: 40,
@@ -77,12 +78,12 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
         </div>
 
         {/* 底部信息 */}
-        <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: '#888' }}>
+        <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--ink-muted)' }}>
           {isExternal ? (
             isUploadedResource ? (
               <>
                 <span>
-                  <StarFilled style={{ color: '#faad14' }} /> {parseFloat(item.rating_average || 0).toFixed(1)}
+                  <StarFilled style={{ color: 'var(--status-warning)' }} /> {parseFloat(item.rating_average || 0).toFixed(1)}
                 </span>
                 <span>
                   <DownloadOutlined /> {item.downloads_count || 0}
@@ -92,7 +93,7 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
               <>
                 <span>
                   <GithubOutlined style={{ marginRight: 4 }} />
-                  <StarFilled style={{ color: '#faad14', marginRight: 2 }} />
+                  <StarFilled style={{ color: 'var(--status-warning)', marginRight: 2 }} />
                   {item.github_stars || 0}
                 </span>
                 <span>
@@ -104,7 +105,7 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
             /* Agent: 显示评分 + 下载量 */
             <>
               <span>
-                <StarFilled style={{ color: '#faad14' }} /> {parseFloat(item.rating_average || 0).toFixed(1)}
+                <StarFilled style={{ color: 'var(--status-warning)' }} /> {parseFloat(item.rating_average || 0).toFixed(1)}
               </span>
               <span>
                 <DownloadOutlined /> {item.downloads_count || 0}
@@ -115,7 +116,7 @@ function ResourceCard({ item, onClick, resourceType = 'skill' }) {
 
         {/* 作者 — 仅 Agent 显示 */}
         {!isExternal && (
-          <div style={{ marginTop: 8, fontSize: 12, color: '#aaa' }}>
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-muted)' }}>
             by {item.author_name || '未知'}
           </div>
         )}

@@ -2,9 +2,9 @@ import { Card, List, Tag, Spin, Avatar } from 'antd'
 import { StarFilled, LinkOutlined, GithubOutlined } from '@ant-design/icons'
 
 const rankColors = {
-  1: '#faad14', // 金
-  2: '#aaa',    // 银
-  3: '#cd7f32', // 铜
+  1: 'var(--status-warning)', // 金
+  2: 'var(--status-silver)',    // 银
+  3: 'var(--status-bronze)', // 铜
 }
 
 function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading = false, resourceType }) {
@@ -12,8 +12,9 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
 
   return (
     <Card
-      title={<span style={{ fontSize: 18, fontWeight: 'bold' }}>{title}</span>}
+      title={<span style={{ fontSize: 22, fontFamily: '"Playfair Display", Georgia, serif' }}>{title}</span>}
       style={{ marginBottom: 24 }}
+      className="cream-panel"
     >
       <Spin spinning={loading}>
         <List
@@ -21,15 +22,16 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
           locale={{ emptyText: '暂无数据' }}
           renderItem={(item, index) => {
             const rank = index + 1
-            const rankColor = rankColors[rank] || '#999'
+            const rankColor = rankColors[rank] || 'var(--ink-muted)'
             const isUploadedResource = item.source_type === 'uploaded'
 
             return (
               <List.Item
-                style={{ cursor: 'pointer', padding: '12px 0' }}
+                className="ranking-item"
+                style={{ cursor: 'pointer', padding: '14px 0' }}
                 onClick={() => onItemClick?.(item)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 12 }}>
+                <div className="ranking-row" style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 12 }}>
                   {/* 排名序号 */}
                   <span
                     style={{
@@ -59,7 +61,7 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
                         width: 28,
                         height: 28,
                         borderRadius: 6,
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        background: 'linear-gradient(135deg, #2f57cc 0%, #7350b6 100%)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -87,34 +89,34 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
                       {item.name}
                     </span>
                     {isExternal && !isUploadedResource && (
-                      <LinkOutlined style={{ color: '#888', fontSize: 12, flexShrink: 0 }} />
+                      <LinkOutlined style={{ color: 'var(--ink-muted)', fontSize: 12, flexShrink: 0 }} />
                     )}
                   </div>
 
                   {/* 作者 */}
-                  <span style={{ color: '#888', fontSize: 12, flexShrink: 0 }}>
+                  <span className="ranking-author" style={{ color: 'var(--ink-muted)', fontSize: 12, flexShrink: 0 }}>
                     {item.author_name || '未知'}
                   </span>
 
                   {/* 分类 Tag */}
                   {item.category && (
-                    <Tag style={{ margin: 0, flexShrink: 0 }}>{item.category}</Tag>
+                    <Tag className="ranking-category-tag" style={{ margin: 0, flexShrink: 0 }}>{item.category}</Tag>
                   )}
 
                   {/* 星数（Skill/MCP）或 评分（Agent） */}
                   {isExternal ? (
                     isUploadedResource ? (
-                      <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
+                      <span style={{ color: 'var(--status-warning)', fontSize: 12, flexShrink: 0 }}>
                         <StarFilled /> {parseFloat(item.rating_average || 0).toFixed(1)}
                       </span>
                     ) : (
-                      <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
+                      <span style={{ color: 'var(--status-warning)', fontSize: 12, flexShrink: 0 }}>
                         <GithubOutlined style={{ marginRight: 2 }} />
                         <StarFilled /> {item.github_stars || 0}
                       </span>
                     )
                   ) : (
-                    <span style={{ color: '#faad14', fontSize: 12, flexShrink: 0 }}>
+                    <span style={{ color: 'var(--status-warning)', fontSize: 12, flexShrink: 0 }}>
                       <StarFilled /> {parseFloat(item.rating_average || 0).toFixed(1)}
                     </span>
                   )}

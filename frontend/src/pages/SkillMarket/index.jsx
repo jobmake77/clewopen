@@ -66,11 +66,12 @@ function SkillMarket() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div className="page-shell">
       {/* 标题 */}
-      <div style={{ marginBottom: 24 }}>
-        <h1>Skill 库</h1>
-        <p style={{ color: '#666' }}>
+      <div style={{ marginBottom: 24, paddingTop: 12 }}>
+        <p className="section-label">Skill Library</p>
+        <h1 style={{ fontSize: 'clamp(30px, 5.2vw, 42px)', marginBottom: 8 }}>Skill 库</h1>
+        <p style={{ color: 'var(--ink-muted)' }}>
           发现和使用专业的 Skill 技能包，扩展 Agent 能力
         </p>
       </div>

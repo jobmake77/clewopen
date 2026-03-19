@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -44,15 +44,8 @@ function UserCenter() {
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
 
-  useEffect(() => {
-    if (activeTab === 'downloads') {
-      loadDownloads()
-    } else if (activeTab === 'agents') {
-      loadMyAgents()
-    }
-  }, [activeTab])
-
-  const loadDownloads = async () => {
+  const loadDownloads = useCallback(async () => {
+    if (!user?.id) return
     setLoadingDownloads(true)
     try {
       const response = await api.get(`/users/${user.id}/downloads`)
@@ -64,9 +57,10 @@ function UserCenter() {
     } finally {
       setLoadingDownloads(false)
     }
-  }
+  }, [user?.id])
 
-  const loadMyAgents = async () => {
+  const loadMyAgents = useCallback(async () => {
+    if (!user?.id) return
     setLoadingAgents(true)
     try {
       const response = await api.get(`/users/${user.id}/agents`)
@@ -78,7 +72,15 @@ function UserCenter() {
     } finally {
       setLoadingAgents(false)
     }
-  }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (activeTab === 'downloads') {
+      loadDownloads()
+    } else if (activeTab === 'agents') {
+      loadMyAgents()
+    }
+  }, [activeTab, loadDownloads, loadMyAgents])
 
   const handleEditProfile = () => {
     form.setFieldsValue({
@@ -127,12 +129,12 @@ function UserCenter() {
         </span>
       ),
       children: (
-        <Card>
+        <Card className="cream-panel">
           <div className="profile-header">
             <Avatar size={100} icon={<UserOutlined />} src={user.avatar} />
             <div className="profile-info">
               <h2>{user.username}</h2>
-              <p style={{ color: '#666' }}>{user.email}</p>
+              <p style={{ color: 'var(--ink-muted)' }}>{user.email}</p>
               <Tag color={user.role === 'developer' ? 'blue' : 'default'}>
                 {user.role === 'developer' ? '开发者' : user.role === 'admin' ? '管理员' : '普通用户'}
               </Tag>
@@ -170,7 +172,7 @@ function UserCenter() {
         </span>
       ),
       children: (
-        <Card>
+        <Card className="cream-panel">
           {loadingDownloads ? (
             <div style={{ textAlign: 'center', padding: 50 }}>
               <Spin />
@@ -182,6 +184,7 @@ function UserCenter() {
                 <List.Item
                   actions={[
                     <Button
+                      key={`view-${item.agent_id}`}
                       type="link"
                       onClick={() => navigate(`/agent/${item.agent_id}`)}
                     >
@@ -215,7 +218,7 @@ function UserCenter() {
         </span>
       ),
       children: (
-        <Card>
+        <Card className="cream-panel">
           <div style={{ marginBottom: 16 }}>
             <Button type="primary" onClick={() => navigate('/upload-agent')}>
               上传新 Agent
@@ -281,7 +284,7 @@ function UserCenter() {
                         <div>
                           <p style={{ margin: 0 }}>{item.description}</p>
                           {item.status === 'rejected' && rejectionReason && (
-                            <p style={{ color: '#ff4d4f', margin: '4px 0 0' }}>
+                            <p style={{ color: 'var(--status-danger)', margin: '4px 0 0' }}>
                               拒绝原因: {rejectionReason}
                             </p>
                           )}
@@ -306,6 +309,7 @@ function UserCenter() {
 
   return (
     <div className="user-center">
+      <p className="section-label">User Center</p>
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}

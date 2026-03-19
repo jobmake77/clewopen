@@ -49,9 +49,9 @@ function App() {
         <Route
           path="/*"
           element={
-            <Layout style={{ minHeight: '100vh' }}>
+            <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
               <Header />
-              <Content style={{ padding: '24px 50px' }}>
+              <Content style={{ padding: '24px 20px 36px' }}>
                 <Routes>
                   <Route path="/" element={<MarketPlace />} />
                   <Route path="/agent/:id" element={<AgentDetail />} />

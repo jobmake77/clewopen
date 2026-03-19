@@ -63,55 +63,60 @@ function MarketPlace() {
   }, [dispatch])
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      {/* 页面标题 */}
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, marginBottom: 8 }}>Clew AI 市场</h1>
-        <p style={{ color: '#666', fontSize: 16 }}>
-          发现 Agent、Skill 和 MCP，构建你的 AI 工作流
+    <div className="page-shell">
+      <section style={{ padding: '36px 0 20px' }}>
+        <p className="section-label">Open Agent Platform</p>
+        <h1 style={{ fontSize: 'clamp(34px, 7vw, 56px)', lineHeight: 1.1, margin: 0 }}>
+          发现、创建与分享
+          <br />
+          <span style={{ color: 'var(--accent-blue)', fontStyle: 'italic' }}>智能 Agent</span>
+        </h1>
+        <p style={{ color: 'var(--ink-muted)', fontSize: 16, marginTop: 16, maxWidth: 680, lineHeight: 1.75 }}>
+          ClewOpen 是一个面向真实生产场景的 Agent 生态平台。浏览、试用并发布 Agent / Skill / MCP，
+          在统一沙盒里验证能力后再进入交付链路。
         </p>
-      </div>
+      </section>
 
       {/* 1. 统计概览区 */}
       <Spin spinning={statsLoading}>
-        <Row gutter={[16, 16]} style={{ marginBottom: 32 }}>
+        <Row gutter={[16, 16]} style={{ marginBottom: 28 }}>
           <Col xs={12} sm={6}>
-            <Card>
+            <Card className="cream-panel">
               <Statistic
                 title="Agent 总数"
                 value={stats?.totalAgents || 0}
                 prefix={<RobotOutlined />}
-                valueStyle={{ color: '#1890ff' }}
+                valueStyle={{ color: 'var(--accent-blue)' }}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card>
+            <Card className="cream-panel">
               <Statistic
                 title="注册用户"
                 value={stats?.totalUsers || 0}
                 prefix={<UserOutlined />}
-                valueStyle={{ color: '#52c41a' }}
+                valueStyle={{ color: 'var(--accent-sage)' }}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card>
+            <Card className="cream-panel">
               <Statistic
                 title="Skill 总数"
                 value={stats?.totalSkills || 0}
                 prefix={<ToolOutlined />}
-                valueStyle={{ color: '#fa8c16' }}
+                valueStyle={{ color: '#b98944' }}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card>
+            <Card className="cream-panel">
               <Statistic
                 title="MCP 总数"
                 value={stats?.totalMcps || 0}
                 prefix={<ApiOutlined />}
-                valueStyle={{ color: '#722ed1' }}
+                valueStyle={{ color: '#7347b0' }}
               />
             </Card>
           </Col>
@@ -120,7 +125,7 @@ function MarketPlace() {
 
       {/* 2. 分类数据看板 */}
       {stats?.categories && stats.categories.length > 0 && (
-        <Card title="Agent 分类分布" style={{ marginBottom: 24 }}>
+        <Card title="Agent 分类分布" style={{ marginBottom: 24 }} className="cream-panel">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {stats.categories.map((cat) => (
               <Tag
@@ -170,11 +175,12 @@ function MarketPlace() {
       <Card
         title="定制开发悬赏榜"
         style={{ marginBottom: 24 }}
+        className="cream-panel"
         extra={<a onClick={() => navigate('/custom-order')}>查看全部</a>}
       >
         <Spin spinning={ordersLoading}>
           {customOrders.length === 0 ? (
-            <p style={{ color: '#999', textAlign: 'center', padding: 24 }}>暂无悬赏订单</p>
+            <p style={{ color: 'var(--ink-muted)', textAlign: 'center', padding: 24 }}>暂无悬赏订单</p>
           ) : (
             customOrders.map((order) => (
               <div
@@ -193,7 +199,7 @@ function MarketPlace() {
                   <div style={{ fontWeight: 500, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {order.title}
                   </div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>
                     <CalendarOutlined style={{ marginRight: 4 }} />
                     截止 {order.deadline ? new Date(order.deadline).toLocaleDateString() : '未设定'}
                   </div>

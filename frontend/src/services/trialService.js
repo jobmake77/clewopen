@@ -120,7 +120,7 @@ export const streamTrialSessionMessage = async (sessionId, message, handlers = {
   let buffer = ''
   let finalPayload = null
 
-  while (true) {
+  for (;;) {
     const { done, value } = await reader.read()
     buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
     buffer = flushEventStreamBuffer(buffer, (event) => {

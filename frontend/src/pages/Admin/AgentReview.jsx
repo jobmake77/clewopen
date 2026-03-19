@@ -51,17 +51,17 @@ function AgentReview() {
   const [globalFailureThreshold, setGlobalFailureThreshold] = useState(3)
   const [globalPublishJobsPagination, setGlobalPublishJobsPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [publishForm] = Form.useForm()
+  const currentPage = pagination.current
+  const currentPageSize = pagination.pageSize
+  const globalJobsCurrentPage = globalPublishJobsPagination.current
+  const globalJobsPageSize = globalPublishJobsPagination.pageSize
 
-  useEffect(() => {
-    loadAgents()
-  }, [pagination.current, pagination.pageSize])
-
-  const loadAgents = async () => {
+  const loadAgents = useCallback(async () => {
     setLoading(true)
     try {
       const response = await getPendingAgents({
-        page: pagination.current,
-        pageSize: pagination.pageSize
+        page: currentPage,
+        pageSize: currentPageSize
       })
       if (response.success) {
         setAgents(response.data.agents)
@@ -75,7 +75,11 @@ function AgentReview() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, currentPageSize])
+
+  useEffect(() => {
+    loadAgents()
+  }, [loadAgents])
 
   const handleApprove = (id) => {
     Modal.confirm({
@@ -197,8 +201,8 @@ function AgentReview() {
   }, [])
 
   const loadGlobalPublishJobs = useCallback(async (options = {}) => {
-    const page = options.page ?? globalPublishJobsPagination.current
-    const pageSize = options.pageSize ?? globalPublishJobsPagination.pageSize
+    const page = options.page ?? globalJobsCurrentPage
+    const pageSize = options.pageSize ?? globalJobsPageSize
     const status = options.status ?? globalPublishJobStatusFilter
     const keyword = options.keyword ?? globalPublishJobKeyword
     const anomalyOnly = options.anomalyOnly ?? globalPublishAnomalyOnly
@@ -229,11 +233,11 @@ function AgentReview() {
       setGlobalPublishJobsLoading(false)
     }
   }, [
+    globalJobsCurrentPage,
+    globalJobsPageSize,
     globalPublishAnomalyOnly,
     globalPublishJobKeyword,
     globalPublishJobStatusFilter,
-    globalPublishJobsPagination.current,
-    globalPublishJobsPagination.pageSize,
     globalPublishRecentHours,
   ])
 
@@ -518,7 +522,7 @@ function AgentReview() {
   })
 
   return (
-    <div>
+    <div className="admin-section">
       <Space style={{ marginBottom: 16 }}>
         <Button onClick={openGlobalPublishJobsModal}>
           全局发布任务
@@ -591,12 +595,12 @@ function AgentReview() {
               ))}
             </Descriptions.Item>
             <Descriptions.Item label="Manifest" span={2}>
-              <pre style={{ maxHeight: 300, overflow: 'auto', background: '#f5f5f5', padding: 10 }}>
+              <pre style={{ maxHeight: 300, overflow: 'auto', background: 'var(--surface-muted)', padding: 10, borderRadius: 8 }}>
                 {JSON.stringify(selectedAgent.manifest, null, 2)}
               </pre>
             </Descriptions.Item>
             <Descriptions.Item label="自动审核结果" span={2}>
-              <pre style={{ maxHeight: 220, overflow: 'auto', background: '#f5f5f5', padding: 10 }}>
+              <pre style={{ maxHeight: 220, overflow: 'auto', background: 'var(--surface-muted)', padding: 10, borderRadius: 8 }}>
                 {JSON.stringify(selectedAgent.auto_review_result || {}, null, 2)}
               </pre>
             </Descriptions.Item>
@@ -704,7 +708,7 @@ function AgentReview() {
         </Space>
         {(globalPublishSummary?.recentFailedAgents || []).length > 0 && (
           <Space style={{ marginBottom: 12 }} wrap>
-            <span style={{ color: '#666' }}>最近失败较多 Agent:</span>
+            <span style={{ color: 'var(--ink-muted)' }}>最近失败较多 Agent:</span>
             {globalPublishSummary.recentFailedAgents.map((item) => (
               <Tag
                 key={item.agent_id}
@@ -1077,7 +1081,7 @@ function AgentReview() {
             最近发布任务: {publishJobs[0].status}
           </Tag>
           {publishJobs[0].error_message && (
-            <span style={{ color: '#ff4d4f', marginLeft: 8 }}>{publishJobs[0].error_message}</span>
+            <span style={{ color: 'var(--status-danger)', marginLeft: 8 }}>{publishJobs[0].error_message}</span>
           )}
         </div>
       )}

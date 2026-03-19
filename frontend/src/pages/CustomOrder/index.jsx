@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { Card, Button, Form, Input, InputNumber, Select, DatePicker, Row, Col, Tag, List, Spin, Modal, message, Empty } from 'antd'
@@ -32,17 +32,15 @@ function CustomOrder() {
   const [submitting, setSubmitting] = useState(false)
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
   const [form] = Form.useForm()
+  const currentPage = pagination.current
+  const currentPageSize = pagination.pageSize
 
-  useEffect(() => {
-    loadOrders()
-  }, [pagination.current])
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     setLoading(true)
     try {
       const response = await getCustomOrders({
-        page: pagination.current,
-        pageSize: pagination.pageSize,
+        page: currentPage,
+        pageSize: currentPageSize,
       })
       if (response.success) {
         setOrders(response.data.orders)
@@ -53,7 +51,11 @@ function CustomOrder() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, currentPageSize])
+
+  useEffect(() => {
+    loadOrders()
+  }, [loadOrders])
 
   const handleCreate = () => {
     if (!isAuthenticated) {
@@ -91,11 +93,12 @@ function CustomOrder() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div className="page-shell">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h1>定制开发</h1>
-          <p style={{ color: '#666' }}>发布您的定制需求，专业开发者将为您提供服务</p>
+          <p className="section-label">Custom Development</p>
+          <h1 style={{ fontSize: 'clamp(30px, 5.2vw, 42px)', marginBottom: 8 }}>定制开发</h1>
+          <p style={{ color: 'var(--ink-muted)' }}>发布您的定制需求，专业开发者将为您提供服务</p>
         </div>
         <Button type="primary" size="large" icon={<PlusOutlined />} onClick={handleCreate}>
           发布需求
@@ -113,29 +116,29 @@ function CustomOrder() {
               onChange: (page) => setPagination(prev => ({ ...prev, current: page })),
             }}
             renderItem={(order) => (
-              <Card style={{ marginBottom: 16 }} hoverable>
-                <Row justify="space-between" align="top">
-                  <Col span={18}>
+              <Card style={{ marginBottom: 16 }} hoverable className="cream-panel custom-order-card">
+                <Row justify="space-between" align="top" gutter={[12, 12]}>
+                  <Col xs={24} md={18}>
                     <h3 style={{ marginBottom: 8 }}>{order.title}</h3>
-                    <p style={{ color: '#666', marginBottom: 12 }}>{order.description}</p>
+                    <p style={{ color: 'var(--ink-muted)', marginBottom: 12 }}>{order.description}</p>
                     <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                       <Tag color={statusMap[order.status]?.color}>{statusMap[order.status]?.text}</Tag>
                       {order.category && <Tag>{orderCategories.find(c => c.value === order.category)?.label || order.category}</Tag>}
                       {(order.budget_min || order.budget_max) && (
-                        <span style={{ color: '#f5222d', fontWeight: 'bold' }}>
+                        <span style={{ color: 'var(--status-danger)', fontWeight: 'bold' }}>
                           预算: ¥{order.budget_min || 0} - ¥{order.budget_max || '不限'}
                         </span>
                       )}
                       {order.deadline && (
-                        <span style={{ color: '#999' }}>
+                        <span style={{ color: 'var(--ink-muted)' }}>
                           截止: {new Date(order.deadline).toLocaleDateString()}
                         </span>
                       )}
                     </div>
                   </Col>
-                  <Col>
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ color: '#999', fontSize: 12 }}>
+                  <Col xs={24} md={6}>
+                    <div className="custom-order-meta" style={{ textAlign: 'right' }}>
+                      <p style={{ color: 'var(--ink-muted)', fontSize: 12 }}>
                         {order.user_name} 发布于 {new Date(order.created_at).toLocaleDateString()}
                       </p>
                     </div>
@@ -145,7 +148,7 @@ function CustomOrder() {
             )}
           />
         ) : (
-          <Card>
+          <Card className="cream-panel">
             <Empty description="暂无定制需求" />
           </Card>
         )}

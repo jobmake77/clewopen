@@ -21,10 +21,12 @@ function UserManagement() {
   const [agents, setAgents] = useState([])
   const [selectedAgentId, setSelectedAgentId] = useState(undefined)
   const [grantLoading, setGrantLoading] = useState(false)
+  const currentPage = pagination.current
+  const currentPageSize = pagination.pageSize
 
   const loadUsers = useCallback(async (options = {}) => {
-    const page = options.page ?? pagination.current
-    const pageSize = options.pageSize ?? pagination.pageSize
+    const page = options.page ?? currentPage
+    const pageSize = options.pageSize ?? currentPageSize
     const nextSearch = options.search ?? search
     const nextRole = options.role ?? roleFilter
 
@@ -51,7 +53,7 @@ function UserManagement() {
     } finally {
       setLoading(false)
     }
-  }, [pagination.current, pagination.pageSize, roleFilter, search])
+  }, [currentPage, currentPageSize, roleFilter, search])
 
   const loadAgents = useCallback(async () => {
     try {
@@ -120,7 +122,7 @@ function UserManagement() {
   }
 
   return (
-    <div>
+    <div className="admin-section">
       <Space style={{ marginBottom: 16 }} wrap>
         <Input
           style={{ width: 260 }}

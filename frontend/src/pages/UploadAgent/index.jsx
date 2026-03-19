@@ -84,6 +84,7 @@ const UploadAgent = () => {
   return (
     <div className="upload-agent-container">
       <div className="upload-agent-content">
+        <p className="section-label">Publish Agent</p>
         <h1>发布 Agent</h1>
         <p className="subtitle">将您的专业能力打包为 Agent，分享给更多用户</p>
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Form, Input, Select, Upload, Button, Tag, message } from 'antd'
 import { UploadOutlined, PlusOutlined } from '@ant-design/icons'
 import { uploadMcp } from '../../services/mcpService'
+import '../UploadAgent/index.css'
 
 const { TextArea } = Input
 const { Option } = Select
@@ -75,11 +76,11 @@ const UploadMcp = () => {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
+    <div className="upload-agent-container">
+      <div className="upload-agent-content">
+        <p className="section-label">Publish MCP</p>
         <h1>发布 MCP</h1>
-        <p style={{ color: '#666' }}>将您的 MCP 服务包发布到 MCP 库，供 Agent 接入外部能力</p>
-      </div>
+        <p className="subtitle">将您的 MCP 服务包发布到 MCP 库，供 Agent 接入外部能力</p>
 
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item label="MCP 名称" name="name" rules={[{ required: true, message: '请输入 MCP 名称' }]}>
@@ -101,11 +102,11 @@ const UploadMcp = () => {
         </Form.Item>
 
         <Form.Item label="标签">
-          <div>
-            <div style={{ marginBottom: 8 }}>
+          <div className="tags-input">
+            <div className="tags-list">
               {tags.map(tag => <Tag key={tag} closable onClose={() => handleRemoveTag(tag)}>{tag}</Tag>)}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="tag-input-group">
               <Input value={inputTag} onChange={(e) => setInputTag(e.target.value)} onPressEnter={handleAddTag} placeholder="输入标签后按回车" style={{ width: 200 }} />
               <Button type="dashed" onClick={handleAddTag} icon={<PlusOutlined />}>添加标签</Button>
             </div>
@@ -122,6 +123,7 @@ const UploadMcp = () => {
           <Button type="primary" htmlType="submit" loading={loading} size="large" block>提交审核</Button>
         </Form.Item>
       </Form>
+      </div>
     </div>
   )
 }

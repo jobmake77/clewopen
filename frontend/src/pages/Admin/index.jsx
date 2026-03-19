@@ -84,53 +84,54 @@ function Admin() {
 
   return (
     <div className="admin-container">
+      <p className="section-label">Operations Console</p>
       <h1>管理控制台</h1>
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="待审核 Agent"
               value={stats.pendingAgents}
               prefix={<FileTextOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              valueStyle={{ color: 'var(--status-info)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="待审核评价"
               value={stats.pendingReviews}
               prefix={<StarOutlined />}
-              valueStyle={{ color: '#faad14' }}
+              valueStyle={{ color: 'var(--status-warning)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="Agent 总数"
               value={stats.totalAgents}
               prefix={<TeamOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              valueStyle={{ color: 'var(--status-success)' }}
             />
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card className="cream-panel">
             <Statistic
               title="今日概览"
               value={stats.pendingAgents + stats.pendingReviews}
               suffix="项待处理"
               prefix={<DownloadOutlined />}
-              valueStyle={{ color: '#f5222d' }}
+              valueStyle={{ color: 'var(--status-danger)' }}
             />
           </Card>
         </Col>
       </Row>
 
-      <Card>
+      <Card className="cream-panel">
         <Tabs items={tabItems} />
       </Card>
     </div>

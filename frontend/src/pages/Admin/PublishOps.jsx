@@ -23,6 +23,8 @@ function PublishOps() {
   const [alertLoading, setAlertLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState({})
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 })
+  const currentPage = pagination.current
+  const currentPageSize = pagination.pageSize
 
   const formatDurationSeconds = (value) => {
     const seconds = Number(value || 0)
@@ -36,8 +38,8 @@ function PublishOps() {
   }
 
   const loadJobs = useCallback(async (options = {}) => {
-    const page = options.page ?? pagination.current
-    const pageSize = options.pageSize ?? pagination.pageSize
+    const page = options.page ?? currentPage
+    const pageSize = options.pageSize ?? currentPageSize
     const status = options.status ?? statusFilter
     const nextKeyword = options.keyword ?? keyword
     const nextAnomalyOnly = options.anomalyOnly ?? anomalyOnly
@@ -67,7 +69,7 @@ function PublishOps() {
     } finally {
       setJobsLoading(false)
     }
-  }, [anomalyOnly, keyword, pagination.current, pagination.pageSize, recentHours, statusFilter])
+  }, [anomalyOnly, currentPage, currentPageSize, keyword, recentHours, statusFilter])
 
   const loadSummary = useCallback(async (options = {}) => {
     const nextRecentHours = options.recentHours ?? recentHours
@@ -107,14 +109,6 @@ function PublishOps() {
       window.clearInterval(timerId)
     }
   }, [autoRefresh, loadJobs, loadSummary])
-
-  useEffect(() => {
-    if (!alertAutoTrigger) return
-    if (!summary) return
-    const failedCount = Number(summary?.recentWindowTotals?.failed || 0)
-    if (failedCount < failureThreshold) return
-    triggerAlert({ dryRun: false })
-  }, [alertAutoTrigger, failureThreshold, summary, triggerAlert])
 
   const handleRetry = async (job) => {
     const key = `retry-${job.id}`
@@ -208,6 +202,14 @@ function PublishOps() {
     }
   }, [alertCooldownMinutes, failureThreshold, recentHours])
 
+  useEffect(() => {
+    if (!alertAutoTrigger) return
+    if (!summary) return
+    const failedCount = Number(summary?.recentWindowTotals?.failed || 0)
+    if (failedCount < failureThreshold) return
+    triggerAlert({ dryRun: false })
+  }, [alertAutoTrigger, failureThreshold, summary, triggerAlert])
+
   const recentFailedCount = Number(summary?.recentWindowTotals?.failed || 0)
   const recentWindowTotal = Number(summary?.recentWindowTotals?.total || 0)
   const recentFailureRate = recentWindowTotal > 0
@@ -222,8 +224,8 @@ function PublishOps() {
       : { type: 'success', text: '发布链路健康' }
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card title="发布任务健康看板" loading={summaryLoading}>
+    <Space direction="vertical" size={16} style={{ width: '100%' }} className="admin-section">
+      <Card title="发布任务健康看板" loading={summaryLoading} className="cream-panel">
         <Space wrap style={{ marginBottom: 12 }}>
           <Tag color="blue">总任务: {summary?.totals?.total ?? '-'}</Tag>
           <Tag color="processing">排队: {summary?.totals?.queued ?? '-'}</Tag>
@@ -248,7 +250,7 @@ function PublishOps() {
 
         {(summary?.recentFailedAgents || []).length > 0 && (
           <Space wrap style={{ marginBottom: 12 }}>
-            <span style={{ color: '#666' }}>失败较多 Agent:</span>
+            <span style={{ color: 'var(--ink-muted)' }}>失败较多 Agent:</span>
             {summary.recentFailedAgents.map((item) => (
               <Tag
                 key={item.agent_id}
@@ -267,7 +269,7 @@ function PublishOps() {
         )}
 
         {(summary?.recentFailureReasons || []).length > 0 && (
-          <Card type="inner" title="失败原因聚类 TopN" size="small">
+          <Card type="inner" title="失败原因聚类 TopN" size="small" className="cream-panel">
             <Space wrap>
               {summary.recentFailureReasons.map((item) => (
                 <Tag
@@ -292,7 +294,7 @@ function PublishOps() {
         )}
       </Card>
 
-      <Card title="全局发布任务">
+      <Card title="全局发布任务" className="cream-panel">
         <Space style={{ marginBottom: 12 }} wrap>
           <Switch
             checked={autoRefresh}

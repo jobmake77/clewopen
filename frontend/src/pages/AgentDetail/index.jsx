@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress } from 'antd'
@@ -97,6 +97,44 @@ function AgentDetail() {
   const [loadingDeps, setLoadingDeps] = useState(false)
   const [depsLoaded, setDepsLoaded] = useState(false)
 
+  const loadReviews = useCallback(async () => {
+    setLoadingReviews(true)
+    try {
+      const response = await api.get(`/agents/${id}/reviews`, {
+        params: { page: 1, pageSize: 1000 },
+      })
+      if (response.success) {
+        setReviews(response.data?.reviews || [])
+      }
+    } catch (error) {
+      console.error('Failed to load reviews:', error)
+    } finally {
+      setLoadingReviews(false)
+    }
+  }, [id])
+
+  const loadTrialSession = useCallback(async (sessionId, nextRemainingTrials = remainingTrials) => {
+    const res = await getTrialSession(sessionId)
+    if (!res.success) return
+
+    setTrialSessionId(res.data.session.id)
+    setTrialSessionStatus(res.data.session.status)
+    setRemainingTrials(nextRemainingTrials)
+    setTrialProvisioning(res.data.session.metadata?.provisioning || null)
+    setTrialExpiresAt(res.data.session.expires_at)
+    setTrialMessages(
+      res.data.messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        time: msg.created_at,
+        statusLines: [],
+        streaming: false,
+      }))
+    )
+    setTrialLoaded(res.data.session.status !== 'provisioning')
+  }, [remainingTrials])
+
   useEffect(() => {
     dispatch(fetchAgentDetail(id))
     loadReviews()
@@ -117,7 +155,7 @@ function AgentDetail() {
     setTrialSendingElapsedSec(0)
     trialStreamingMessageIdRef.current = null
     trialLocalMessageCounterRef.current = 0
-  }, [dispatch, id])
+  }, [dispatch, id, loadReviews])
 
   useEffect(() => {
     if (!trialSending) {
@@ -163,28 +201,12 @@ function AgentDetail() {
         window.clearTimeout(timerId)
       }
     }
-  }, [trialVisible, trialSessionId, trialSessionStatus, trialProvisioning?.stage, trialSending])
+  }, [loadTrialSession, trialVisible, trialSessionId, trialSessionStatus, trialProvisioning?.stage, trialSending])
 
   useEffect(() => {
     if (!trialVisible || !trialMessagesRef.current) return
     trialMessagesRef.current.scrollTop = trialMessagesRef.current.scrollHeight
   }, [trialVisible, trialMessages, trialSending, trialSessionStatus, trialProvisioning])
-
-  const loadReviews = async () => {
-    setLoadingReviews(true)
-    try {
-      const response = await api.get(`/agents/${id}/reviews`, {
-        params: { page: 1, pageSize: 1000 },
-      })
-      if (response.success) {
-        setReviews(response.data?.reviews || [])
-      }
-    } catch (error) {
-      console.error('Failed to load reviews:', error)
-    } finally {
-      setLoadingReviews(false)
-    }
-  }
 
   const buildLocalTrialMessage = (payload) => {
     const nextId = `local-${Date.now()}-${trialLocalMessageCounterRef.current}`
@@ -416,28 +438,6 @@ function AgentDetail() {
     } finally {
       setSubmittingRate(false)
     }
-  }
-
-  const loadTrialSession = async (sessionId, nextRemainingTrials = remainingTrials) => {
-    const res = await getTrialSession(sessionId)
-    if (!res.success) return
-
-    setTrialSessionId(res.data.session.id)
-    setTrialSessionStatus(res.data.session.status)
-    setRemainingTrials(nextRemainingTrials)
-    setTrialProvisioning(res.data.session.metadata?.provisioning || null)
-    setTrialExpiresAt(res.data.session.expires_at)
-    setTrialMessages(
-      res.data.messages.map((msg) => ({
-        id: msg.id,
-        role: msg.role,
-        content: msg.content,
-        time: msg.created_at,
-        statusLines: [],
-        streaming: false,
-      }))
-    )
-    setTrialLoaded(res.data.session.status !== 'provisioning')
   }
 
   const refreshRemainingTrials = async () => {
@@ -712,14 +712,14 @@ function AgentDetail() {
                   key: f.key,
                   label: <span>{f.icon} {f.label}</span>,
                   children: (
-                    <div style={{ background: '#fafafa', padding: 16, borderRadius: 4 }}>
+                    <div style={{ background: 'var(--surface-muted)', padding: 16, borderRadius: 8 }}>
                       <ReactMarkdown>{preview[f.key]}</ReactMarkdown>
                     </div>
                   ),
                 }))}
             />
           ) : (
-            <p style={{ color: '#999' }}>无法加载包内容预览</p>
+            <p style={{ color: 'var(--ink-muted)' }}>无法加载包内容预览</p>
           )}
         </div>
       ),
@@ -796,11 +796,11 @@ function AgentDetail() {
               )}
 
               {(!dependencies.skills?.length && !dependencies.mcps?.length) && (
-                <p style={{ color: '#999' }}>此 Agent 没有声明 Skill/MCP 依赖</p>
+                <p style={{ color: 'var(--ink-muted)' }}>此 Agent 没有声明 Skill/MCP 依赖</p>
               )}
             </div>
           ) : (
-            <p style={{ color: '#999' }}>无法加载依赖信息</p>
+            <p style={{ color: 'var(--ink-muted)' }}>无法加载依赖信息</p>
           )}
         </div>
       ),
@@ -811,12 +811,12 @@ function AgentDetail() {
       children: (
         <div>
           <h3>安装</h3>
-          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4 }}>
+          <pre style={{ background: 'var(--surface-muted)', padding: 16, borderRadius: 8 }}>
             {`# 下载 Agent 包\nclewopen download ${currentAgent.name}\n\n# 安装到本地\nclewopen install ${currentAgent.name}`}
           </pre>
 
           <h3>基本用法</h3>
-          <pre style={{ background: '#f5f5f5', padding: 16, borderRadius: 4 }}>
+          <pre style={{ background: 'var(--surface-muted)', padding: 16, borderRadius: 8 }}>
             {`# 运行 Agent\nclewopen run ${currentAgent.name} --input "your input"`}
           </pre>
         </div>
@@ -837,7 +837,7 @@ function AgentDetail() {
                   <Rate disabled value={review.rating} style={{ marginLeft: 16, fontSize: 14 }} />
                 </div>
                 <p>{review.comment}</p>
-                <p style={{ color: '#999', fontSize: 12 }}>
+                <p style={{ color: 'var(--ink-muted)', fontSize: 12 }}>
                   {new Date(review.created_at).toLocaleDateString()}
                 </p>
               </Card>
@@ -856,12 +856,15 @@ function AgentDetail() {
   ]
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div className="page-shell" style={{ paddingTop: 10 }}>
+      <div style={{ marginBottom: 18 }}>
+        <p className="section-label">{currentAgent.category || 'Agent Detail'}</p>
+      </div>
       <Row gutter={24}>
         <Col span={16}>
-          <Card>
+          <Card className="cream-panel">
             <div style={{ marginBottom: 24 }}>
-              <h1>{currentAgent.name}</h1>
+              <h1 style={{ fontSize: 'clamp(30px, 5.2vw, 42px)', marginBottom: 12 }}>{currentAgent.name}</h1>
               <div style={{ marginBottom: 16 }}>
                 {currentAgent.tags?.map((tag) => (
                   <Tag key={tag} color="blue">
@@ -888,13 +891,13 @@ function AgentDetail() {
         </Col>
 
         <Col span={8}>
-          <Card>
+          <Card className="cream-panel" style={{ position: 'sticky', top: 86 }}>
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
               <div
                 style={{
                   width: '100%',
                   height: 200,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #1f49bc 0%, #5c79d3 100%)',
                   borderRadius: 8,
                   display: 'flex',
                   alignItems: 'center',
@@ -976,7 +979,7 @@ function AgentDetail() {
             </div>
 
             <div>
-              <h4>Agent 信息</h4>
+              <h4 style={{ marginTop: 0 }}>Agent 信息</h4>
               <p>
                 <strong>版本:</strong> {currentAgent.version}
               </p>
@@ -1054,7 +1057,7 @@ function AgentDetail() {
         </div>
 
         {trialExpiresAt && (
-          <div style={{ marginBottom: 12, color: '#666', fontSize: 12 }}>
+          <div style={{ marginBottom: 12, color: 'var(--ink-muted)', fontSize: 12 }}>
             会话有效期至: {new Date(trialExpiresAt).toLocaleString()}
           </div>
         )}
@@ -1097,15 +1100,15 @@ function AgentDetail() {
           style={{
           height: 400,
           overflowY: 'auto',
-          border: '1px solid #f0f0f0',
+          border: '1px solid var(--cream-border)',
           borderRadius: 8,
           padding: 16,
           marginBottom: 12,
-          background: '#fafafa',
+          background: 'color-mix(in srgb, var(--cream-card) 88%, #fff 12%)',
           }}
         >
           {trialMessages.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#999', marginTop: 160 }}>
+            <div style={{ textAlign: 'center', color: 'var(--ink-muted)', marginTop: 160 }}>
               {isTrialPreparing
                 ? '试用环境准备中，你已经可以先输入问题并提前排队'
                 : isTrialWarming
@@ -1128,9 +1131,9 @@ function AgentDetail() {
                 maxWidth: '75%',
                 padding: '10px 14px',
                 borderRadius: 12,
-                background: msg.role === 'user' ? '#1890ff' : '#fff',
-                color: msg.role === 'user' ? '#fff' : '#333',
-                border: msg.role === 'user' ? 'none' : '1px solid #e8e8e8',
+                background: msg.role === 'user' ? 'var(--accent-blue)' : '#fff',
+                color: msg.role === 'user' ? '#fff' : 'var(--ink)',
+                border: msg.role === 'user' ? 'none' : '1px solid var(--cream-border)',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 lineHeight: 1.6,
@@ -1139,7 +1142,7 @@ function AgentDetail() {
                   <div>
                     {msg.content ? <ReactMarkdown>{msg.content}</ReactMarkdown> : null}
                     {msg.streaming && (
-                      <div style={{ color: '#8c8c8c', fontSize: 12 }}>
+                      <div style={{ color: 'var(--ink-muted)', fontSize: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <Spin size="small" />
                           <span>
@@ -1180,7 +1183,7 @@ function AgentDetail() {
           >
             发送
           </Button>
-          <Button onClick={() => handleEndTrial()} disabled={!trialSessionId} loading={endingTrial}>
+          <Button danger onClick={() => handleEndTrial()} disabled={!trialSessionId} loading={endingTrial}>
             结束试用
           </Button>
         </div>

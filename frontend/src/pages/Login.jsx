@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
 import { Form, Input, Button, Card, message, Divider } from 'antd'
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons'
+import { LockOutlined, MailOutlined } from '@ant-design/icons'
 import { login, clearError } from '../store/slices/authSlice'
 import './Login.css'
 
@@ -39,7 +39,15 @@ export default function Login() {
 
   return (
     <div className="login-container">
-      <Card className="login-card" title="登录 OpenCLEW">
+      <Card
+        className="login-card cream-panel"
+        title={
+          <div>
+            <p className="section-label" style={{ marginBottom: 8 }}>Welcome Back</p>
+            <div style={{ fontSize: 'clamp(26px, 4.8vw, 30px)', fontFamily: '"Playfair Display", Georgia, serif' }}>登录 ClewOpen</div>
+          </div>
+        }
+      >
         <Form
           form={form}
           name="login"
