@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import { Card, Tabs, Statistic, Row, Col } from 'antd'
-import { FileTextOutlined, StarOutlined, TeamOutlined, DownloadOutlined } from '@ant-design/icons'
+import { FileTextOutlined, StarOutlined, TeamOutlined, DownloadOutlined, DatabaseOutlined, CloudServerOutlined, ApiOutlined, SettingOutlined } from '@ant-design/icons'
 import AgentReview from './AgentReview'
 import ReviewManagement from './ReviewManagement'
 import DataSync from './DataSync'
@@ -47,37 +47,37 @@ function Admin() {
   const tabItems = [
     {
       key: 'agents',
-      label: 'Agent 审核',
+      label: <span><FileTextOutlined /> Agent 审核</span>,
       children: <AgentReview />
     },
     {
       key: 'reviews',
-      label: '评价审核',
+      label: <span><StarOutlined /> 评价审核</span>,
       children: <ReviewManagement />
     },
     {
       key: 'data-sync',
-      label: '数据同步',
+      label: <span><DatabaseOutlined /> 数据同步</span>,
       children: <DataSync />
     },
     {
       key: 'llm-settings',
-      label: 'LLM 配置',
+      label: <span><SettingOutlined /> LLM 配置</span>,
       children: <LlmSettings />
     },
     {
       key: 'trial-runtime',
-      label: '试用沙盒',
+      label: <span><CloudServerOutlined /> 试用沙盒</span>,
       children: <TrialRuntime />
     },
     {
       key: 'publish-ops',
-      label: '发布运维',
+      label: <span><ApiOutlined /> 发布运维</span>,
       children: <PublishOps />
     },
     {
       key: 'users',
-      label: '用户管理',
+      label: <span><TeamOutlined /> 用户管理</span>,
       children: <UserManagement />
     }
   ]
@@ -86,6 +86,9 @@ function Admin() {
     <div className="admin-container">
       <p className="section-label">Operations Console</p>
       <h1>管理控制台</h1>
+      <p style={{ marginTop: -12, marginBottom: 20, color: 'var(--ink-muted)' }}>
+        审核、同步、试用沙盒与发布运维的统一看板
+      </p>
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>

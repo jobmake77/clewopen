@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Input, Modal, Select, Space, Table, Tag, message } from 'antd'
+import { Button, Input, Modal, Select, Space, Table, Tag, message, Empty } from 'antd'
 import {
   getAllAgentsAdmin,
   getAllUsersAdmin,
@@ -123,7 +123,7 @@ function UserManagement() {
 
   return (
     <div className="admin-section">
-      <Space style={{ marginBottom: 16 }} wrap>
+      <div className="admin-toolbar">
         <Input
           style={{ width: 260 }}
           placeholder="搜索用户名/邮箱"
@@ -147,12 +147,22 @@ function UserManagement() {
           ]}
         />
         <Button onClick={() => loadUsers({ page: 1, search })}>搜索</Button>
-      </Space>
+        <Button onClick={() => loadUsers({ page: 1 })}>刷新</Button>
+        <span className="admin-toolbar-meta">用户总数: {pagination.total}</span>
+      </div>
 
       <Table
         rowKey="id"
         loading={loading}
         dataSource={users}
+        locale={{
+          emptyText: (
+            <Empty
+              description="暂无用户数据"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          ),
+        }}
         columns={[
           {
             title: '用户名',

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress } from 'antd'
-import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined } from '@ant-design/icons'
+import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined, AppstoreOutlined, ApartmentOutlined, ReadOutlined, MessageOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
 import api from '../../services/api'
@@ -676,7 +676,9 @@ function AgentDetail() {
   const tabItems = [
     {
       key: 'overview',
-      label: '概述',
+      label: (
+        <span><FileTextOutlined /> 概述</span>
+      ),
       children: (
         <div>
           <h3>功能描述</h3>
@@ -697,7 +699,7 @@ function AgentDetail() {
     {
       key: 'preview',
       label: (
-        <span><FileTextOutlined /> 包内容</span>
+        <span><AppstoreOutlined /> 包内容</span>
       ),
       children: (
         <div>
@@ -727,7 +729,7 @@ function AgentDetail() {
     {
       key: 'dependencies',
       label: (
-        <span><LinkOutlined /> 依赖</span>
+        <span><ApartmentOutlined /> 依赖</span>
       ),
       children: (
         <div>
@@ -807,7 +809,9 @@ function AgentDetail() {
     },
     {
       key: 'usage',
-      label: '使用说明',
+      label: (
+        <span><ReadOutlined /> 使用说明</span>
+      ),
       children: (
         <div>
           <h3>安装</h3>
@@ -824,7 +828,9 @@ function AgentDetail() {
     },
     {
       key: 'reviews',
-      label: '评价',
+      label: (
+        <span><MessageOutlined /> 评价</span>
+      ),
       children: (
         <div>
           {loadingReviews ? (
@@ -886,7 +892,12 @@ function AgentDetail() {
 
             <Divider />
 
-            <Tabs items={tabItems} onChange={handleTabChange} />
+            <Tabs
+              items={tabItems}
+              onChange={handleTabChange}
+              className="agent-detail-tabs"
+              animated={{ inkBar: true, tabPane: true }}
+            />
           </Card>
         </Col>
 
@@ -1037,21 +1048,29 @@ function AgentDetail() {
 
       {/* 试用沙盒弹窗 */}
       <Modal
-        title={`试用 ${currentAgent.name}`}
+        title={(
+          <div>
+            <div>{`试用 ${currentAgent.name}`}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontFamily: 'Inter, sans-serif', marginTop: 4 }}>
+              你可以先输入问题，消息会在试用环境就绪后自动处理
+            </div>
+          </div>
+        )}
         open={trialVisible}
         onCancel={handleRequestCloseTrialModal}
         footer={null}
-        width={700}
+        width={760}
+        rootClassName="agent-trial-modal"
       >
         <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             {trialSessionStatus && (
-              <Tag color={trialStatusMeta.color}>
+              <Tag color={trialStatusMeta.color} style={{ fontSize: 11 }}>
                 会话状态: {trialStatusMeta.label}
               </Tag>
             )}
           </div>
-          <Tag color={remainingTrials > 0 ? 'blue' : 'red'}>
+          <Tag color={remainingTrials > 0 ? 'blue' : 'red'} style={{ fontSize: 11 }}>
             剩余试用次数: {remainingTrials}
           </Tag>
         </div>
@@ -1064,17 +1083,24 @@ function AgentDetail() {
 
         {showTrialProvisioning && (
           <div style={{ marginBottom: 12 }}>
-            <Alert
-              type="info"
-              showIcon
-              message={provisioningMeta?.label || '正在准备试用环境'}
-              description={
-                trialProvisioning?.detail ||
-                (isTrialWarming
-                  ? '你已经可以输入问题，后台正在继续预热流式引擎。'
-                  : '首次试用可能需要 30-90 秒，请稍候。')
-              }
-            />
+            <div
+              style={{
+                border: '1px solid color-mix(in srgb, var(--accent-blue) 30%, #fff 70%)',
+                background: 'color-mix(in srgb, var(--accent-blue) 7%, #fff 93%)',
+                borderRadius: 10,
+                padding: '12px 14px',
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                {provisioningMeta?.label || '正在准备试用环境'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+                {trialProvisioning?.detail ||
+                  (isTrialWarming
+                    ? '你已经可以输入问题，后台正在继续预热流式引擎。'
+                    : '首次试用可能需要 30-90 秒，请稍候。')}
+              </div>
+            </div>
             <Progress
               percent={provisioningMeta?.percent || 20}
               status="active"
@@ -1114,7 +1140,7 @@ function AgentDetail() {
                 : isTrialWarming
                   ? '你已经可以输入问题，系统会边预热边开始响应'
                   : trialLoaded
-                    ? '发送消息开始试用此 Agent'
+                    ? '环境已就绪，开始与 Agent 对话吧'
                     : '点击开始后这里会展示试用对话'}
             </div>
           )}
@@ -1169,7 +1195,7 @@ function AgentDetail() {
             value={trialInput}
             onChange={(e) => setTrialInput(e.target.value)}
             onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); handleTrialSend() } }}
-            placeholder={trialPlaceholder}
+            placeholder={isTrialPreparing ? '可以先输入问题，消息会在环境就绪后自动发送...' : trialPlaceholder}
             disabled={remainingTrials <= 0 || trialSending || !canInteractWithTrialSession}
             autoSize={{ minRows: 1, maxRows: 3 }}
             style={{ flex: 1 }}

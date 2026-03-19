@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Table, Button, Tag, Modal, message, Space, Descriptions, Input, Form, Select, Switch } from 'antd'
+import { Table, Button, Tag, Modal, message, Space, Descriptions, Input, Form, Select, Switch, Empty } from 'antd'
 import { CheckOutlined, CloseOutlined, EyeOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import {
   getPendingAgents,
@@ -523,11 +523,17 @@ function AgentReview() {
 
   return (
     <div className="admin-section">
-      <Space style={{ marginBottom: 16 }}>
+      <div className="admin-toolbar">
         <Button onClick={openGlobalPublishJobsModal}>
           全局发布任务
         </Button>
-      </Space>
+        <Button onClick={loadAgents}>
+          刷新列表
+        </Button>
+        <span className="admin-toolbar-meta">
+          当前待审核: {pagination.total}
+        </span>
+      </div>
 
       {selectedRowKeys.length > 0 && (
         <Space style={{ marginBottom: 16 }}>
@@ -556,6 +562,14 @@ function AgentReview() {
         dataSource={agents}
         loading={loading}
         rowKey="id"
+        locale={{
+          emptyText: (
+            <Empty
+              description="暂无待审核 Agent"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          ),
+        }}
         rowSelection={rowSelection}
         pagination={{
           ...pagination,

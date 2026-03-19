@@ -10,20 +10,47 @@
 }
 
 .admin-container .ant-tabs-nav {
-  margin-bottom: 18px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--cream-border);
+  padding-inline: 14px;
 }
 
 .admin-container .ant-tabs-tab {
-  border-radius: 999px !important;
-  padding-inline: 14px !important;
+  border-radius: 0 !important;
+  padding: 12px 14px !important;
+  margin: 0 !important;
+  border-bottom: 2px solid transparent !important;
 }
 
 .admin-container .ant-tabs-tab-active {
-  background: #ece3d7;
+  background: transparent !important;
+  border-bottom-color: var(--accent-blue) !important;
+}
+
+.admin-container .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-blue) !important;
+  font-weight: 600;
+}
+
+.admin-container .ant-tabs-content-holder {
+  padding: 16px;
 }
 
 .admin-section {
   display: block;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.admin-toolbar-meta {
+  color: var(--ink-muted);
+  font-size: 12px;
 }
 
 .admin-section .ant-space {

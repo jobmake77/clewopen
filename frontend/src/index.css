@@ -346,6 +346,41 @@ pre {
   font-family: 'Playfair Display', Georgia, serif;
 }
 
+.agent-detail-tabs .ant-tabs-nav {
+  margin-bottom: 18px !important;
+}
+
+.agent-detail-tabs .ant-tabs-nav::before {
+  border-bottom-color: var(--cream-border) !important;
+}
+
+.agent-detail-tabs .ant-tabs-tab {
+  padding: 10px 2px !important;
+  margin-right: 22px !important;
+  color: var(--ink-muted);
+}
+
+.agent-detail-tabs .ant-tabs-tab:hover {
+  color: var(--ink) !important;
+}
+
+.agent-detail-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--accent-blue) !important;
+  font-weight: 600;
+}
+
+.agent-detail-tabs .ant-tabs-content-holder {
+  min-height: 160px;
+}
+
+.agent-trial-modal .ant-modal-content {
+  overflow: hidden;
+}
+
+.agent-trial-modal .ant-progress-bg {
+  background: linear-gradient(90deg, var(--accent-blue), #5f7fda) !important;
+}
+
 @media (max-width: 768px) {
   .page-shell {
     padding-inline: 2px;
@@ -387,5 +422,13 @@ pre {
 
   .custom-order-meta {
     text-align: left !important;
+  }
+
+  .agent-detail-tabs .ant-tabs-tab {
+    margin-right: 14px !important;
+  }
+
+  .agent-detail-tabs .ant-tabs-tab-btn {
+    font-size: 12px;
   }
 }

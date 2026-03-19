@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Table, Button, Tag, Modal, message, Space, Rate, Input } from 'antd'
+import { Table, Button, Tag, Modal, message, Space, Rate, Input, Empty } from 'antd'
 import { CheckOutlined, CloseOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { getAllReviews, approveReview, rejectReview, deleteReview } from '../../services/adminService'
 
@@ -208,11 +208,23 @@ function ReviewManagement() {
 
   return (
     <div className="admin-section">
+      <div className="admin-toolbar">
+        <Button onClick={loadReviews}>刷新列表</Button>
+        <span className="admin-toolbar-meta">待审核评价: {pagination.total}</span>
+      </div>
       <Table
         columns={columns}
         dataSource={reviews}
         loading={loading}
         rowKey="id"
+        locale={{
+          emptyText: (
+            <Empty
+              description="暂无待审核评价"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          ),
+        }}
         pagination={{
           ...pagination,
           onChange: (page, pageSize) => {

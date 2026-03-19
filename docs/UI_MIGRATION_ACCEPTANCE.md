@@ -47,3 +47,9 @@
 ## Notes
 - 当前迁移策略为“保留业务逻辑 + 替换视觉层”，API、Redux、试用链路未被重写。
 - 若要做 1:1 像素级还原，下一步建议补充截图对照验收（page-by-page）。
+
+## H. Upstream Sync (cream-canvas latest)
+- [x] 已拉取 `https://github.com/jobmake77/cream-canvas.git` 最新提交链路并对齐核心页面
+- [x] 对齐 `AgentDetail` 新版布局语义（tabs 图标化、侧栏层级、试用入口）
+- [x] 对齐 `AgentTrialDialog` 新版节奏（准备态信息卡 + 进度表达 + 输入提示）
+- [x] 对齐 `AdminDashboard` 顶层表达（控制台 tab 结构、工具栏与空态风格）
