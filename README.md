@@ -249,6 +249,7 @@ openclewopen/
 - [管理员审核指南](docs/ADMIN_REVIEW.md)
 - [API 文档](docs/api/)
 - [数据库设计](docs/DATABASE_SCHEMA.md)
+- [合规基础上线说明](docs/COMPLIANCE_POLICY_ROLLOUT.md)
 - [贡献指南](CONTRIBUTING.md)
 
 ## 🗺️ 开发路线图

@@ -1,4 +1,13 @@
 import { query } from '../config/database.js'
+import { decryptSecret, encryptSecret } from '../utils/secretCrypto.js'
+
+function hydrateApiKey(row) {
+  if (!row || row.api_key == null) return row
+  return {
+    ...row,
+    api_key: decryptSecret(row.api_key),
+  }
+}
 
 const LlmConfigModel = {
   async findAll() {
@@ -21,7 +30,7 @@ const LlmConfigModel = {
       'SELECT * FROM llm_configs WHERE is_active = true AND role = $1 LIMIT 1',
       [role]
     )
-    return result.rows[0] || null
+    return hydrateApiKey(result.rows[0]) || null
   },
 
   async findById(id) {
@@ -29,7 +38,7 @@ const LlmConfigModel = {
       'SELECT * FROM llm_configs WHERE id = $1 LIMIT 1',
       [id]
     )
-    return result.rows[0] || null
+    return hydrateApiKey(result.rows[0]) || null
   },
 
   async findRoutingCandidates(role = 'trial') {
@@ -41,7 +50,7 @@ const LlmConfigModel = {
        ORDER BY is_active DESC, priority ASC, updated_at DESC, created_at DESC`,
       [role]
     )
-    return result.rows
+    return result.rows.map(hydrateApiKey)
   },
 
   async findByFingerprint({ provider_name, api_url, model_id, role = 'trial' }) {
@@ -53,7 +62,7 @@ const LlmConfigModel = {
        LIMIT 1`,
       [provider_name, api_url, model_id, role]
     )
-    return result.rows[0] || null
+    return hydrateApiKey(result.rows[0]) || null
   },
 
   async create(data) {
@@ -73,7 +82,7 @@ const LlmConfigModel = {
       [
         data.provider_name,
         data.api_url,
-        data.api_key,
+        encryptSecret(data.api_key),
         data.model_id,
         data.role || 'trial',
         data.priority ?? 100,
@@ -105,7 +114,7 @@ const LlmConfigModel = {
     ]) {
       if (data[key] !== undefined) {
         fields.push(`${key} = $${idx}`)
-        params.push(data[key])
+        params.push(key === 'api_key' ? encryptSecret(data[key]) : data[key])
         idx++
       }
     }
@@ -136,7 +145,7 @@ const LlmConfigModel = {
          legacy_openai_format, updated_at`,
       params
     )
-    return result.rows[0]
+    return hydrateApiKey(result.rows[0])
   },
 
   async setActive(id, role = 'trial') {

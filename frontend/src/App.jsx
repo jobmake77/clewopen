@@ -14,6 +14,10 @@ import UploadMcp from './pages/UploadMcp'
 import Admin from './pages/Admin'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import PrivacyPolicy from './pages/Legal/PrivacyPolicy'
+import TermsOfService from './pages/Legal/TermsOfService'
+import AiUsageGuide from './pages/Legal/AiUsageGuide'
+import ComplaintPolicy from './pages/Legal/ComplaintPolicy'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -60,6 +64,10 @@ function App() {
                   <Route path="/mcps" element={<McpMarket />} />
                   <Route path="/mcps/:id" element={<McpDetail />} />
                   <Route path="/custom-order" element={<CustomOrder />} />
+                  <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+                  <Route path="/legal/terms" element={<TermsOfService />} />
+                  <Route path="/legal/ai-usage" element={<AiUsageGuide />} />
+                  <Route path="/legal/complaint" element={<ComplaintPolicy />} />
                   <Route
                     path="/user"
                     element={
