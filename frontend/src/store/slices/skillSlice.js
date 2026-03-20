@@ -19,7 +19,7 @@ export const fetchSkillDetail = createAsyncThunk(
 
 export const fetchTrendingSkills = createAsyncThunk(
   'skill/fetchTrendingSkills',
-  async ({ limit = 10, days = 7 } = {}) => {
+  async ({ limit = 10, days = 1 } = {}) => {
     const response = await getTrendingSkills({ limit, days })
     return response.data
   }

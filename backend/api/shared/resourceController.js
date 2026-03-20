@@ -148,10 +148,13 @@ export function createResourceController(Model, resourceType, resourceLabel) {
 
   const getTrendingItems = async (req, res, next) => {
     try {
-      const { limit = 10, days = 7, sourceType, sourcePlatform } = req.query;
+      const defaultDays = resourceType === 'skill' ? 1 : 7
+      const requestedDays = Number.parseInt(String(req.query?.days || ''), 10)
+      const { limit = 10, sourceType, sourcePlatform } = req.query;
+      const resolvedDays = Number.isFinite(requestedDays) && requestedDays > 0 ? requestedDays : defaultDays
       const items = await Model.getTrending({
         limit: parseInt(limit),
-        days: parseInt(days),
+        days: resolvedDays,
         sourceType,
         sourcePlatform,
       });

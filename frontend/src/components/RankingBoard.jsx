@@ -24,6 +24,7 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
             const rank = index + 1
             const rankColor = rankColors[rank] || 'var(--ink-muted)'
             const isUploadedResource = item.source_type === 'uploaded'
+            const starsGrowth = Number(item.stars_growth ?? item.stars_growth_7d ?? 0)
 
             return (
               <List.Item
@@ -118,6 +119,20 @@ function RankingBoard({ items = [], title = '热门榜单', onItemClick, loading
                   ) : (
                     <span style={{ color: 'var(--status-warning)', fontSize: 12, flexShrink: 0 }}>
                       <StarFilled /> {parseFloat(item.rating_average || 0).toFixed(1)}
+                    </span>
+                  )}
+
+                  {isExternal && !isUploadedResource && (
+                    <span
+                      style={{
+                        color: starsGrowth > 0 ? '#52c41a' : 'var(--ink-muted)',
+                        fontSize: 12,
+                        flexShrink: 0,
+                        minWidth: 52,
+                        textAlign: 'right',
+                      }}
+                    >
+                      {starsGrowth > 0 ? `+${starsGrowth}` : '+0'}
                     </span>
                   )}
                 </div>

@@ -49,8 +49,8 @@ function MarketPlace() {
   useEffect(() => {
     dispatch(fetchPlatformStats())
     dispatch(fetchTrendingAgents({ limit: 10 }))
-    dispatch(fetchTrendingSkills({ limit: 10 }))
-    dispatch(fetchTrendingMcps({ limit: 10 }))
+    dispatch(fetchTrendingSkills({ limit: 10, days: 1 }))
+    dispatch(fetchTrendingMcps({ limit: 10, days: 7 }))
 
     // 获取最新定制订单
     setOrdersLoading(true)
@@ -153,18 +153,18 @@ function MarketPlace() {
         onItemClick={(item) => navigate(`/agent/${item.id}`)}
       />
 
-      {/* 4. Skill 热门榜单 */}
+      {/* 4. Skill 日榜 */}
       <RankingBoard
-        title="Skill 热门榜单"
+        title="Skill 热榜（日榜）"
         items={skillTrending}
         loading={skillTrendingLoading}
         resourceType="skill"
         onItemClick={(item) => navigate(`/skills/${item.id}`)}
       />
 
-      {/* 5. MCP 热门榜单 */}
+      {/* 5. MCP 周榜 */}
       <RankingBoard
-        title="MCP 热门榜单"
+        title="MCP 热榜（周榜）"
         items={mcpTrending}
         loading={mcpTrendingLoading}
         resourceType="mcp"

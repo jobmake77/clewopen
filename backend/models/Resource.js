@@ -236,11 +236,20 @@ export function createResourceModel(tableName) {
     async getTrending({ limit = 10, days = 7, sourceType, sourcePlatform }) {
       const safeDays = Math.max(1, parseInt(days, 10) || 7);
       const sql = `
+        WITH snapshot_bounds AS (
+          SELECT MAX(snapshot_date) AS latest_snapshot_date
+          FROM resource_star_snapshots
+          WHERE resource_type = $4
+        )
         SELECT
           a.*,
           u.username as author_name,
           u.avatar_url as author_avatar,
           COALESCE(v.visits_count, 0) as visits_count,
+          GREATEST(
+            0,
+            COALESCE(s.current_stars, a.github_stars, 0) - COALESCE(s.baseline_stars, COALESCE(s.current_stars, a.github_stars, 0))
+          )::int AS stars_growth,
           GREATEST(
             0,
             COALESCE(s.current_stars, a.github_stars, 0) - COALESCE(s.baseline_stars, COALESCE(s.current_stars, a.github_stars, 0))
@@ -253,6 +262,7 @@ export function createResourceModel(tableName) {
           WHERE resource_type = '${resourceType}'
           GROUP BY resource_id
         ) v ON v.resource_id = a.id
+        CROSS JOIN snapshot_bounds b
         LEFT JOIN LATERAL (
           SELECT
             cur.stars AS current_stars,
@@ -270,7 +280,8 @@ export function createResourceModel(tableName) {
             FROM resource_star_snapshots
             WHERE resource_type = $4
               AND resource_id = a.id
-              AND snapshot_date <= (CURRENT_DATE - ($5::int))
+              AND b.latest_snapshot_date IS NOT NULL
+              AND snapshot_date <= (b.latest_snapshot_date - ($5::int))
             ORDER BY snapshot_date DESC
             LIMIT 1
           ) prev ON TRUE
