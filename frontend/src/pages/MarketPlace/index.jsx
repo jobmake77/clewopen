@@ -7,13 +7,13 @@ import {
   UserOutlined,
   ToolOutlined,
   ApiOutlined,
-  DollarOutlined,
-  CalendarOutlined,
+  StarOutlined,
+  DownloadOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons'
 import { fetchTrendingAgents, fetchPlatformStats } from '../../store/slices/agentSlice'
 import { fetchTrendingSkills } from '../../store/slices/skillSlice'
 import { fetchTrendingMcps } from '../../store/slices/mcpSlice'
-import { getCustomOrders } from '../../services/customOrderService'
 import RankingBoard from '../../components/RankingBoard'
 
 const categoryLabelMap = {
@@ -42,25 +42,19 @@ function MarketPlace() {
   const { trending: agentTrending, trendingLoading: agentTrendingLoading, stats, statsLoading } = useSelector((state) => state.agent)
   const { trending: skillTrending, trendingLoading: skillTrendingLoading } = useSelector((state) => state.skill)
   const { trending: mcpTrending, trendingLoading: mcpTrendingLoading } = useSelector((state) => state.mcp)
-
-  const [customOrders, setCustomOrders] = useState([])
-  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [activeAgentCategory, setActiveAgentCategory] = useState('全部')
 
   useEffect(() => {
     dispatch(fetchPlatformStats())
     dispatch(fetchTrendingAgents({ limit: 10 }))
     dispatch(fetchTrendingSkills({ limit: 10, days: 1 }))
     dispatch(fetchTrendingMcps({ limit: 10, days: 7 }))
-
-    // 获取最新定制订单
-    setOrdersLoading(true)
-    getCustomOrders({ page: 1, pageSize: 5, status: 'open' })
-      .then(res => {
-        setCustomOrders(res.data?.items || res.data?.orders || [])
-      })
-      .catch(() => {})
-      .finally(() => setOrdersLoading(false))
   }, [dispatch])
+
+  const agentCategories = ['全部', ...Array.from(new Set(agentTrending.map((item) => item.category).filter(Boolean)))]
+  const filteredAgentTrending = activeAgentCategory === '全部'
+    ? agentTrending
+    : agentTrending.filter((item) => item.category === activeAgentCategory)
 
   return (
     <div className="page-shell">
@@ -144,14 +138,121 @@ function MarketPlace() {
         </Card>
       )}
 
-      {/* 3. Agent 热门榜单 */}
-      <RankingBoard
-        title="Agent 热门榜单"
-        items={agentTrending}
-        loading={agentTrendingLoading}
-        resourceType="agent"
-        onItemClick={(item) => navigate(`/agent/${item.id}`)}
-      />
+      {/* 3. 热门 Agent（卡片网格） */}
+      <section style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
+          <div>
+            <p className="section-label" style={{ marginBottom: 8 }}>AGENT 市场</p>
+            <h2 style={{ margin: 0, fontSize: 'clamp(28px, 4.2vw, 40px)', fontFamily: '"Playfair Display", Georgia, serif' }}>
+              热门 Agent
+            </h2>
+          </div>
+          <a
+            style={{
+              border: '1px solid var(--line)',
+              color: 'var(--ink)',
+              borderRadius: 999,
+              padding: '8px 14px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 500,
+            }}
+            onClick={() => navigate('/agents')}
+          >
+            查看全部 <ArrowRightOutlined />
+          </a>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
+          {agentCategories.map((cat) => {
+            const active = cat === activeAgentCategory
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveAgentCategory(cat)}
+                style={{
+                  borderRadius: 999,
+                  padding: '6px 14px',
+                  border: active ? '1px solid #151515' : '1px solid var(--line)',
+                  background: active ? '#151515' : 'transparent',
+                  color: active ? '#fff' : 'var(--ink)',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                {cat === '全部' ? '全部' : (categoryLabelMap[cat] || cat)}
+              </button>
+            )
+          })}
+        </div>
+
+        <Spin spinning={agentTrendingLoading}>
+          <Row gutter={[16, 16]}>
+            {filteredAgentTrending.slice(0, 6).map((item) => (
+              <Col key={item.id} xs={24} md={12} lg={8}>
+                <div
+                  className="cream-panel"
+                  style={{ padding: 20, cursor: 'pointer', height: '100%' }}
+                  onClick={() => navigate(`/agent/${item.id}`)}
+                >
+                  <div style={{ fontSize: 11, letterSpacing: 1, color: 'var(--ink-muted)', marginBottom: 10 }}>
+                    {categoryLabelMap[item.category] || item.category || 'Agent'}
+                  </div>
+                  <h3
+                    style={{
+                      margin: '0 0 6px',
+                      fontSize: 30,
+                      lineHeight: 1.25,
+                      fontFamily: '"Playfair Display", Georgia, serif',
+                    }}
+                  >
+                    {item.name}
+                  </h3>
+                  <p style={{ margin: '0 0 12px', color: 'var(--ink-muted)', fontSize: 13 }}>
+                    by {item.author_name || 'unknown'}
+                  </p>
+                  <p
+                    style={{
+                      margin: '0 0 14px',
+                      color: 'var(--ink-muted)',
+                      fontSize: 14,
+                      lineHeight: 1.75,
+                      minHeight: 50,
+                    }}
+                  >
+                    {item.description || '智能化 Agent，支持复杂任务处理与自动化执行。'}
+                  </p>
+                  {Array.isArray(item.tags) && item.tags.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                      {item.tags.slice(0, 3).map((tag) => (
+                        <span
+                          key={tag}
+                          style={{
+                            fontSize: 10,
+                            padding: '2px 10px',
+                            borderRadius: 999,
+                            background: '#f3f1eb',
+                            color: 'var(--ink-muted)',
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: 'var(--ink-muted)', fontSize: 12 }}>
+                    <span><StarOutlined /> {parseFloat(item.rating_average || 0).toFixed(1)}</span>
+                    <span><DownloadOutlined /> {item.downloads_count || 0}</span>
+                  </div>
+                </div>
+              </Col>
+            ))}
+          </Row>
+        </Spin>
+      </section>
 
       {/* 4. Skill 日榜 */}
       <RankingBoard
@@ -170,50 +271,6 @@ function MarketPlace() {
         resourceType="mcp"
         onItemClick={(item) => navigate(`/mcps/${item.id}`)}
       />
-
-      {/* 6. 定制开发悬赏榜 */}
-      <Card
-        title="定制开发悬赏榜"
-        style={{ marginBottom: 24 }}
-        className="cream-panel"
-        extra={<a onClick={() => navigate('/custom-order')}>查看全部</a>}
-      >
-        <Spin spinning={ordersLoading}>
-          {customOrders.length === 0 ? (
-            <p style={{ color: 'var(--ink-muted)', textAlign: 'center', padding: 24 }}>暂无悬赏订单</p>
-          ) : (
-            customOrders.map((order) => (
-              <div
-                key={order.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 0',
-                  borderBottom: '1px solid #f0f0f0',
-                  cursor: 'pointer',
-                }}
-                onClick={() => navigate('/custom-order')}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {order.title}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 4 }}>
-                    <CalendarOutlined style={{ marginRight: 4 }} />
-                    截止 {order.deadline ? new Date(order.deadline).toLocaleDateString() : '未设定'}
-                  </div>
-                </div>
-                <div style={{ flexShrink: 0, marginLeft: 16 }}>
-                  <Tag color="gold" style={{ fontSize: 14, padding: '2px 12px' }}>
-                    <DollarOutlined /> {order.budget_min || 0} - {order.budget_max || 0} 元
-                  </Tag>
-                </div>
-              </div>
-            ))
-          )}
-        </Spin>
-      </Card>
     </div>
   )
 }
