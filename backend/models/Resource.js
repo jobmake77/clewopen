@@ -51,7 +51,9 @@ export function createResourceModel(tableName) {
         paramIndex++;
       }
 
-      if (sort === 'downloads') {
+      if (sort === 'latest') {
+        sql += ` ORDER BY a.created_at DESC, a.published_at DESC NULLS LAST`;
+      } else if (sort === 'downloads') {
         sql += ` ORDER BY a.downloads_count DESC`;
       } else if (sort === 'rating') {
         sql += ` ORDER BY a.rating_average DESC`;
@@ -60,7 +62,7 @@ export function createResourceModel(tableName) {
       } else if (sort === 'visits') {
         sql += ` ORDER BY COALESCE(v.visits_count, 0) DESC, a.github_stars DESC NULLS LAST`;
       } else {
-        sql += ` ORDER BY CASE WHEN a.source_type = 'external' THEN COALESCE(v.visits_count, 0) ELSE a.downloads_count END DESC, a.github_stars DESC NULLS LAST, a.created_at DESC`;
+        sql += ` ORDER BY a.created_at DESC, a.published_at DESC NULLS LAST`;
       }
 
       const offset = (page - 1) * pageSize;

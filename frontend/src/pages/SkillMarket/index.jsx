@@ -18,7 +18,7 @@ const categories = [
 ]
 
 const sortOptions = [
-  { label: '综合排序', value: 'default' },
+  { label: '最新上架', value: 'latest' },
   { label: '星数最多', value: 'stars' },
 ]
 
@@ -31,7 +31,7 @@ function SkillMarket() {
   const [pageSize] = useState(20)
   const [category, setCategory] = useState('全部')
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('default')
+  const [sort, setSort] = useState('latest')
   const [sourcePlatform, setSourcePlatform] = useState('all')
 
   useEffect(() => {
@@ -40,7 +40,7 @@ function SkillMarket() {
       pageSize,
       category: category === '全部' ? undefined : category,
       search: search || undefined,
-      sort: sort === 'default' ? undefined : sort,
+      sort,
       sourcePlatform: sourcePlatform === 'all' ? undefined : sourcePlatform,
     }))
   }, [dispatch, page, pageSize, category, search, sort, sourcePlatform])

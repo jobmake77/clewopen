@@ -9,7 +9,7 @@ import ResourceCard from '../../components/ResourceCard'
 const { Search } = Input
 
 const sortOptions = [
-  { label: '综合排序', value: 'default' },
+  { label: '最新上架', value: 'latest' },
   { label: '星数最多', value: 'stars' },
 ]
 
@@ -21,7 +21,7 @@ function McpMarket() {
   const [page, setPage] = useState(1)
   const [pageSize] = useState(20)
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('default')
+  const [sort, setSort] = useState('latest')
   const [sourcePlatform, setSourcePlatform] = useState('all')
 
   useEffect(() => {
@@ -29,7 +29,7 @@ function McpMarket() {
       page,
       pageSize,
       search: search || undefined,
-      sort: sort === 'default' ? undefined : sort,
+      sort,
       sourcePlatform: sourcePlatform === 'all' ? undefined : sourcePlatform,
     }))
   }, [dispatch, page, pageSize, search, sort, sourcePlatform])
