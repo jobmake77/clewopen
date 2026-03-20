@@ -1,6 +1,6 @@
 # 定制开发工作流 V1（无支付）
 
-更新时间：2026-03-19
+更新时间：2026-03-20
 
 ## 目标范围
 
@@ -12,11 +12,13 @@
   - 质量争议与管理员裁决
 - 支付、托管、结算模块暂不接入。
 - 交付方式固定为“上传 ZIP -> 平台入库私有仓库”，不允许外链交付。
+- 存储策略：`manifest + index` 入仓库文件，ZIP 正文入 GitHub Release Asset。
 
 ## 数据库变更
 
 迁移文件：
 - `backend/migrations/016_expand_custom_order_workflow.sql`
+- `backend/migrations/017_custom_order_artifacts_github_repo.sql`
 
 新增/变更：
 
@@ -36,6 +38,7 @@
 
 3. 新增 `custom_order_artifacts`
 - 记录提交 ZIP 在私有 GitHub 仓库中的落盘信息（repo/path/sha/hash）。
+- `metadata` 记录 release/asset 信息，供平台代理下载。
 
 4. 新增 `custom_order_messages`
 - 买方/卖方/管理员站内协作消息。
@@ -89,12 +92,55 @@
 ## 当前边界（待后续支付阶段）
 
 - 暂无支付订单、托管、结算、退款资金流。
-- 争议仅影响任务状态，不进行资金裁决。
-- 争议只做状态裁决，不涉及资金退款处理。
+- 争议只做任务状态裁决，不涉及资金退款处理。
+- 交付物托管于 GitHub 私有仓库，不提供第三方外链直达。
 
-## 你需要确认的关键项
+## 已确认策略
 
-1. 验收超时时间是否固定 48 小时？
-2. `completed` 到 `closed` 是否自动流转？
-3. 争议裁决后默认回到 `in_progress` 还是 `closed`？
-4. 是否允许未指派开发者先提交方案（当前允许，提交后会自动指派）？
+1. 验收超时时间固定 48 小时（开发者发起验收后自动设置）。
+2. `completed` 不自动流转到 `closed`。
+3. 争议裁决后默认流转到 `closed`。
+4. 允许未指派开发者先提交方案，由买方手动选择并指派开发者。
+5. 禁止外链交付，必须上传 ZIP 后由平台托管。
+6. 同时提供 ZIP 下载和安装命令，前端首推安装命令（`openclew install`）。
+7. 试用链路强制使用 submission 对应 `artifact`，不允许回退到外链/本地其他包。
+
+> 说明（2026-03-20 更新）：
+> - 已改为“未指派阶段允许多人提交方案；由买方手动选择开发者并指派”。
+> - 不再采用“首个提交自动指派”。
+
+## 环境变量
+
+在 `backend/.env` 中至少配置：
+
+```env
+GITHUB_PUBLISH_TOKEN=your_github_token
+CUSTOM_ORDER_ARTIFACT_REPO=jobmake77/clewopen-repo
+```
+
+说明：
+- `GITHUB_PUBLISH_TOKEN` 由服务端使用，不应暴露到前端。
+- `CUSTOM_ORDER_ARTIFACT_REPO` 用于统一托管定制交付 ZIP。
+
+## 下载安装策略
+
+1. 页面同时提供：
+- `推荐：一键安装`
+- `下载 ZIP（高级/离线）`
+
+2. 安装命令统一形态：
+
+```bash
+openclew install "<platform-signed-download-url>"
+```
+
+3. 设计目标：
+- 优先降低用户门槛，减少手动下载/解压/路径配置错误。
+- ZIP 下载作为兜底方案保留。
+
+## 试用一致性策略（交付 = 试用）
+
+1. 创建试用会话必须绑定 `submission_id` 并解析到唯一 `artifact_id`。
+2. 沙盒启动前只能从托管 artifact 拉取 ZIP。
+3. 会话元数据记录 `artifact_id` + `sha256`，用于审计与争议复现。
+4. 禁止回退到外链或本地临时包。

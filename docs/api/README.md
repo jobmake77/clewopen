@@ -1,5 +1,9 @@
 # OpenCLEW API 文档
 
+> 定制开发（无支付）最新接口请优先参考：
+> - `docs/CUSTOM_ORDER_API_V1.md`
+> - `docs/CUSTOM_ORDER_WORKFLOW_V1.md`
+
 ## 基础信息
 
 - **Base URL**: `http://localhost:5000/api`

@@ -62,8 +62,11 @@ OpenCLEW 是一个开源的 AI Agent 能力平台，旨在：
 
 ### 定制开发
 
-- 需求发布与接单
-- CustomOrder 流程管理
+- 买方发布需求、卖方提交方案、站内协作消息
+- 48 小时验收窗口与争议裁决（无支付）
+- 交付包统一 ZIP 上传并托管到平台私有仓库（禁外链）
+- 同时支持 ZIP 下载与 `openclew install` 安装命令（推荐安装命令）
+- 试用链路与交付链路统一 artifact，保证验收一致性
 
 ### 开发者工具
 
@@ -250,6 +253,8 @@ openclewopen/
 - [API 文档](docs/api/)
 - [数据库设计](docs/DATABASE_SCHEMA.md)
 - [合规基础上线说明](docs/COMPLIANCE_POLICY_ROLLOUT.md)
+- [定制开发工作流 V1（无支付）](docs/CUSTOM_ORDER_WORKFLOW_V1.md)
+- [定制开发 API V1（无支付）](docs/CUSTOM_ORDER_API_V1.md)
 - [贡献指南](CONTRIBUTING.md)
 
 ## 🗺️ 开发路线图
