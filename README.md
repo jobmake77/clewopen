@@ -142,6 +142,24 @@ bash scripts/start-trial-stack.sh
 bash scripts/stop-trial-stack.sh
 ```
 
+### Skill / MCP 同步模式一键切换（daily / backfill）
+
+建议先配置 `backend/.env` 里的 `GITHUB_TOKEN`，再切换同步模式：
+
+```bash
+# 日常模式（稳态低负载）
+bash scripts/apply-sync-profile.sh daily
+
+# 回填模式（加速扩充技能库）
+bash scripts/apply-sync-profile.sh backfill
+```
+
+应用配置后重启试用后端：
+
+```bash
+bash scripts/start-trial-stack.sh
+```
+
 ## 📦 创建你的第一个 Agent
 
 ### 1. 创建 Agent 目录

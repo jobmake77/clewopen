@@ -19,10 +19,18 @@ const syncIntervalMinutes = Math.max(5, Number.parseInt(process.env.SYNC_INTERVA
 const SYNC_INTERVAL = syncIntervalMinutes * 60 * 1000
 const RUN_SYNC_ON_START = String(process.env.SYNC_RUN_ON_START || 'true').toLowerCase() !== 'false'
 const MAX_HISTORY = 20
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GITHUB_API_TOKEN || ''
+const HAS_GITHUB_TOKEN = Boolean(GITHUB_TOKEN)
 const GITHUB_SEARCH_PER_PAGE = Math.min(100, Math.max(30, Number.parseInt(process.env.SYNC_GITHUB_PER_PAGE || '100', 10)))
 const GITHUB_SEARCH_MAX_PAGES = Math.max(1, Number.parseInt(process.env.SYNC_GITHUB_MAX_PAGES || '10', 10))
-const GITHUB_REQUEST_INTERVAL_MS = Math.max(500, Number.parseInt(process.env.SYNC_GITHUB_REQUEST_INTERVAL_MS || '1500', 10))
-const GITHUB_MAX_REQUESTS_PER_RUN = Math.max(20, Number.parseInt(process.env.SYNC_GITHUB_MAX_REQUESTS_PER_RUN || '120', 10))
+const GITHUB_REQUEST_INTERVAL_MS = Math.max(
+  500,
+  Number.parseInt(process.env.SYNC_GITHUB_REQUEST_INTERVAL_MS || (HAS_GITHUB_TOKEN ? '1200' : '1800'), 10),
+)
+const GITHUB_MAX_REQUESTS_PER_RUN = Math.max(
+  20,
+  Number.parseInt(process.env.SYNC_GITHUB_MAX_REQUESTS_PER_RUN || (HAS_GITHUB_TOKEN ? '240' : '40'), 10),
+)
 
 // Openclaw pagination state — persists across syncs to cover all users incrementally
 let openclawUserOffset = 0
@@ -109,6 +117,14 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function githubHeaders() {
+  return {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'clew-marketplace',
+    ...(GITHUB_TOKEN ? { Authorization: `Bearer ${GITHUB_TOKEN}` } : {}),
+  }
+}
+
 async function ensureUser(login, avatarUrl) {
   const existing = await query(
     `SELECT id FROM users WHERE username = $1 AND deleted_at IS NULL`,
@@ -147,10 +163,7 @@ async function fetchGitHubRepos(queries, maxRequestsPerRun = GITHUB_MAX_REQUESTS
         const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=${GITHUB_SEARCH_PER_PAGE}&page=${page}&sort=stars`
         requestCount += 1
         const res = await fetch(url, {
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'clew-marketplace',
-          },
+          headers: githubHeaders(),
         })
 
         // Check rate limit
@@ -276,10 +289,7 @@ async function upsertFromGitHub(repos, tableName) {
 async function fetchOpenclawUserDirs() {
   const url = 'https://api.github.com/repos/openclaw/skills/contents/skills'
   const res = await fetch(url, {
-    headers: {
-      'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'clew-marketplace',
-    },
+    headers: githubHeaders(),
   })
   if (!res.ok) {
     logger.warn(`Openclaw user dir listing returned ${res.status}`)
@@ -330,10 +340,7 @@ async function saveOpenclawOffset(offset, totalUsers) {
 async function fetchOpenclawSkillsForUser(owner) {
   const url = `https://api.github.com/repos/openclaw/skills/contents/skills/${encodeURIComponent(owner)}`
   const res = await fetch(url, {
-    headers: {
-      'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'clew-marketplace',
-    },
+    headers: githubHeaders(),
   })
   if (!res.ok) return []
   const items = await res.json()
