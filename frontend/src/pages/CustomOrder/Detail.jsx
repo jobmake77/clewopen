@@ -29,6 +29,7 @@ import {
   getCustomOrderSubmissions,
   requestCustomOrderAcceptance,
   downloadCustomOrderSubmissionArtifact,
+  getCustomOrderInstallCommand,
 } from '../../services/customOrderService'
 
 const { TextArea } = Input
@@ -58,6 +59,9 @@ function CustomOrderDetail() {
   const [msgText, setMsgText] = useState('')
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false)
   const [disputeModalOpen, setDisputeModalOpen] = useState(false)
+  const [installModalOpen, setInstallModalOpen] = useState(false)
+  const [installLoading, setInstallLoading] = useState(false)
+  const [installPayload, setInstallPayload] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [submissionFile, setSubmissionFile] = useState(null)
   const [submissionForm] = Form.useForm()
@@ -210,6 +214,36 @@ function CustomOrderDetail() {
     }
   }
 
+  const handleOpenInstallCommand = async (submission) => {
+    setInstallLoading(true)
+    try {
+      const res = await getCustomOrderInstallCommand(id, submission.id)
+      if (res.success) {
+        setInstallPayload({
+          submissionTitle: submission.title,
+          command: res.data.command,
+          expiresAt: res.data.expiresAt,
+          signedDownloadUrl: res.data.signedDownloadUrl,
+        })
+        setInstallModalOpen(true)
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '获取安装命令失败')
+    } finally {
+      setInstallLoading(false)
+    }
+  }
+
+  const handleCopyInstallCommand = async () => {
+    if (!installPayload?.command) return
+    try {
+      await navigator.clipboard.writeText(installPayload.command)
+      message.success('安装命令已复制')
+    } catch {
+      message.warning('复制失败，请手动复制')
+    }
+  }
+
   return (
     <div className="page-shell">
       <Space direction="vertical" style={{ width: '100%' }} size={16}>
@@ -290,9 +324,19 @@ function CustomOrderDetail() {
                                     by {item.developer_name || '开发者'} · {new Date(item.created_at).toLocaleString()}
                                   </span>
                                   {item.artifact_file_name && (
-                                    <Button type="link" style={{ padding: 0 }} onClick={() => handleDownloadArtifact(item)}>
-                                      下载交付 ZIP
-                                    </Button>
+                                    <Space size={12}>
+                                      <Button
+                                        type="link"
+                                        style={{ padding: 0, fontWeight: 600 }}
+                                        loading={installLoading}
+                                        onClick={() => handleOpenInstallCommand(item)}
+                                      >
+                                        推荐：一键安装
+                                      </Button>
+                                      <Button type="link" style={{ padding: 0 }} onClick={() => handleDownloadArtifact(item)}>
+                                        下载 ZIP（高级）
+                                      </Button>
+                                    </Space>
                                   )}
                                 </Space>
                               }
@@ -432,6 +476,32 @@ function CustomOrderDetail() {
             提交争议
           </Button>
         </Form>
+      </Modal>
+
+      <Modal
+        open={installModalOpen}
+        title="推荐安装命令（openclew install）"
+        onCancel={() => setInstallModalOpen(false)}
+        footer={null}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <Alert
+            type="success"
+            showIcon
+            message={installPayload?.submissionTitle ? `方案：${installPayload.submissionTitle}` : '安装命令已生成'}
+            description="推荐使用一键安装命令，避免手动下载/解压/路径配置错误。"
+          />
+          <Input.TextArea value={installPayload?.command || ''} rows={3} readOnly />
+          <div style={{ fontSize: 12, color: 'var(--ink-muted)' }}>
+            有效期：{installPayload?.expiresAt ? new Date(installPayload.expiresAt).toLocaleString() : '-'}
+          </div>
+          <Space>
+            <Button type="primary" onClick={handleCopyInstallCommand}>复制安装命令</Button>
+            <Button onClick={() => installPayload?.signedDownloadUrl && window.open(installPayload.signedDownloadUrl, '_blank')}>
+              备用下载
+            </Button>
+          </Space>
+        </Space>
       </Modal>
     </div>
   )

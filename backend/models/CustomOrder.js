@@ -186,7 +186,8 @@ export const CustomOrderModel = {
               art.git_path AS artifact_git_path,
               art.file_name AS artifact_file_name,
               art.file_size_bytes AS artifact_file_size_bytes,
-              art.sha256 AS artifact_sha256
+              art.sha256 AS artifact_sha256,
+              art.metadata AS artifact_metadata
        FROM custom_order_submissions s
        LEFT JOIN users u ON s.developer_id = u.id
        LEFT JOIN agents a ON s.agent_id = a.id
@@ -203,7 +204,8 @@ export const CustomOrderModel = {
       `SELECT s.*,
               art.repository AS artifact_repository,
               art.git_path AS artifact_git_path,
-              art.file_name AS artifact_file_name
+              art.file_name AS artifact_file_name,
+              art.metadata AS artifact_metadata
        FROM custom_order_submissions s
        LEFT JOIN custom_order_artifacts art ON s.artifact_id = art.id
        WHERE s.id = $1 AND s.order_id = $2

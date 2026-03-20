@@ -102,11 +102,11 @@ Content-Type: `multipart/form-data`
 
 `GET /:id/submissions/:submissionId/artifact/download`
 
-### 8.1 获取推荐安装命令（开发中）
+### 8.1 获取推荐安装命令
 
 `GET /:id/submissions/:submissionId/artifact/install-command`
 
-响应示例（规划）：
+响应示例：
 
 ```json
 {
@@ -180,7 +180,17 @@ Content-Type: `multipart/form-data`
 - 可用状态：`resolved_buyer` / `resolved_developer` / `rejected`
 - 未显式指定 `next_status` 时，系统默认任务状态流转到 `closed`。
 
+## 试用一致性接口（已开发）
+
+### 16. 为 submission 创建试用会话（强制绑定 artifact）
+
+`POST /:id/submissions/:submissionId/trial-sessions`
+
+说明：
+- 必须基于该 submission 对应 artifact 创建会话。
+- 会话 metadata 会记录 `custom_order_submission_id`、`artifact_id`、`artifact_sha256`。
+- 不允许回退到外链或其他包。
+
 ## 已确认但待开发项
 
-1. 前端默认主按钮引导安装命令（`openclew install`），ZIP 作为备用入口。
-2. 试用会话将强制绑定 submission 对应 artifact，确保“试用=交付”一致性。
+1. 试用会话将强制绑定 submission 对应 artifact，确保“试用=交付”一致性。

@@ -17,7 +17,7 @@ import {
 } from './sandbox/poolManager.js'
 import { buildSessionWorkspace, loadSessionWorkspaceFiles } from './sessionBuilder.js'
 import { runPromptSession } from './promptRunner.js'
-import { ensureAgentPackageUsable } from '../../utils/agentPackageReader.js'
+import { ensureAgentPackageUsable, ensureAgentPackageUsableByPath } from '../../utils/agentPackageReader.js'
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
 const MAX_ACTIVE_SESSIONS_PER_USER = 1
@@ -664,7 +664,7 @@ async function provisionTrialSession(session, agent) {
   }
 }
 
-export async function createTrialSession({ userId, agentId }) {
+export async function createTrialSession({ userId, agentId, packageOverride = null, metadataPatch = null }) {
   const agent = await AgentModel.findById(agentId)
   if (!agent) {
     const err = new Error('Agent 不存在')
@@ -678,7 +678,11 @@ export async function createTrialSession({ userId, agentId }) {
     throw err
   }
 
-  await ensureAgentPackageUsable(agent.package_url)
+  if (packageOverride?.localPath) {
+    await ensureAgentPackageUsableByPath(packageOverride.localPath)
+  } else {
+    await ensureAgentPackageUsable(agent.package_url)
+  }
 
   const quota = await AgentTrialModel.getDailyQuotaSummary(userId, agentId)
   if (quota.remainingTrials <= 0) {
@@ -690,6 +694,25 @@ export async function createTrialSession({ userId, agentId }) {
 
   const existingSession = await TrialSessionModel.findActiveByUserAndAgent(userId, agentId)
   if (existingSession) {
+    if (metadataPatch?.custom_order_submission_id) {
+      const existingSubmissionId = existingSession?.metadata?.custom_order_submission_id
+      if (existingSubmissionId && existingSubmissionId !== metadataPatch.custom_order_submission_id) {
+        // continue to create a dedicated session for this submission
+      } else {
+        if (existingSession.status === 'provisioning' && !provisioningTasks.has(existingSession.id)) {
+          const patchedAgent = packageOverride?.localPath
+            ? { ...agent, package_local_path: packageOverride.localPath }
+            : agent
+          const task = provisionTrialSession(existingSession, patchedAgent).catch(() => {})
+          provisioningTasks.set(existingSession.id, task)
+        }
+
+        return {
+          session: existingSession,
+          remainingTrials: quota.remainingTrials,
+        }
+      }
+    } else {
     if (existingSession.status === 'provisioning' && !provisioningTasks.has(existingSession.id)) {
       const task = provisionTrialSession(existingSession, agent).catch(() => {})
       provisioningTasks.set(existingSession.id, task)
@@ -698,6 +721,7 @@ export async function createTrialSession({ userId, agentId }) {
     return {
       session: existingSession,
       remainingTrials: quota.remainingTrials,
+    }
     }
   }
 
@@ -719,10 +743,14 @@ export async function createTrialSession({ userId, agentId }) {
       source: 'session-based-trial',
       version: 1,
       provisioning: buildProvisioningState('queued', '试用环境排队中'),
+      ...(metadataPatch || {}),
     },
   })
 
-  const task = provisionTrialSession(session, agent).catch(() => {})
+  const patchedAgent = packageOverride?.localPath
+    ? { ...agent, package_local_path: packageOverride.localPath }
+    : agent
+  const task = provisionTrialSession(session, patchedAgent).catch(() => {})
   provisioningTasks.set(session.id, task)
 
   return {

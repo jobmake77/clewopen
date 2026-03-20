@@ -138,9 +138,16 @@ openclew install "<platform-signed-download-url>"
 - 优先降低用户门槛，减少手动下载/解压/路径配置错误。
 - ZIP 下载作为兜底方案保留。
 
+4. 已实现接口：
+- `GET /api/custom-orders/:id/submissions/:submissionId/artifact/install-command`
+- `GET /api/custom-orders/install/:token/download`
+
 ## 试用一致性策略（交付 = 试用）
 
 1. 创建试用会话必须绑定 `submission_id` 并解析到唯一 `artifact_id`。
 2. 沙盒启动前只能从托管 artifact 拉取 ZIP。
 3. 会话元数据记录 `artifact_id` + `sha256`，用于审计与争议复现。
 4. 禁止回退到外链或本地临时包。
+
+已开发接口：
+- `POST /api/custom-orders/:id/submissions/:submissionId/trial-sessions`

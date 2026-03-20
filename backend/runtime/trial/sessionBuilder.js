@@ -1,9 +1,15 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { extractAgentFiles, resolveAgentPackagePath } from '../../utils/agentPackageReader.js'
+import { extractAgentFiles, extractAgentFilesByPath, resolveAgentPackagePath } from '../../utils/agentPackageReader.js'
 
 export async function buildSessionWorkspace(agent, workspacePath) {
-  const files = await extractAgentFiles(agent.package_url)
+  const packagePath = agent.package_local_path
+    ? String(agent.package_local_path)
+    : resolveAgentPackagePath(agent.package_url)
+
+  const files = agent.package_local_path
+    ? await extractAgentFilesByPath(packagePath)
+    : await extractAgentFiles(agent.package_url)
   const agentDir = path.join(workspacePath, 'agent')
   const stateDir = path.join(workspacePath, 'state')
   const artifactsDir = path.join(workspacePath, 'artifacts')
@@ -22,7 +28,7 @@ export async function buildSessionWorkspace(agent, workspacePath) {
   )
 
   await fs.copyFile(
-    resolveAgentPackagePath(agent.package_url),
+    packagePath,
     path.join(artifactsDir, 'agent-package.zip')
   )
 

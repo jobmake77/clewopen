@@ -68,6 +68,14 @@ export const downloadCustomOrderSubmissionArtifact = (id, submissionId) => {
   })
 }
 
+export const getCustomOrderInstallCommand = (id, submissionId, params) => {
+  return api.get(`/custom-orders/${id}/submissions/${submissionId}/artifact/install-command`, { params })
+}
+
+export const createCustomOrderSubmissionTrialSession = (id, submissionId) => {
+  return api.post(`/custom-orders/${id}/submissions/${submissionId}/trial-sessions`)
+}
+
 export const deleteCustomOrder = (id) => {
   return api.delete(`/custom-orders/${id}`)
 }

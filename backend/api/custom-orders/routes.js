@@ -1,12 +1,15 @@
 import express from 'express'
 import multer from 'multer'
 import fs from 'fs'
+import fsp from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import CustomOrderModel from '../../models/CustomOrder.js'
 import { authenticate } from '../../middleware/auth.js'
 import { extractManifest } from '../../utils/manifestValidator.js'
 import { downloadGithubArtifact, uploadCustomOrderArtifactToGithub } from '../../services/githubArtifactService.js'
+import CustomOrderArtifactInstallTokenModel from '../../models/CustomOrderArtifactInstallToken.js'
+import { createTrialSession } from '../../runtime/trial/orchestrator.js'
 
 const router = express.Router()
 const __filename = fileURLToPath(import.meta.url)
@@ -40,6 +43,32 @@ const submissionUpload = multer({
   },
 })
 
+function buildServerOrigin(req) {
+  const forwardedProto = req.headers['x-forwarded-proto']
+  const proto = forwardedProto ? String(forwardedProto).split(',')[0] : req.protocol
+  const host = req.get('host')
+  return `${proto}://${host}`
+}
+
+function parseArtifactMetadata(rawMetadata) {
+  if (!rawMetadata) return {}
+  if (typeof rawMetadata === 'object') return rawMetadata
+  try {
+    return JSON.parse(rawMetadata)
+  } catch {
+    return {}
+  }
+}
+
+async function loadSubmissionArtifactZipBuffer(submission) {
+  const artifactMetadata = parseArtifactMetadata(submission.artifact_metadata)
+  return downloadGithubArtifact({
+    repository: submission.artifact_repository,
+    gitPath: submission.artifact_git_path,
+    metadata: artifactMetadata,
+  })
+}
+
 function resolveMessageRole(order, user) {
   if (user.role === 'admin') return 'admin'
   if (order.user_id === user.id) return 'buyer'
@@ -62,6 +91,41 @@ router.get('/', async (req, res, next) => {
       category,
     })
     res.json({ success: true, data: result })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 使用短期安装 token 下载交付包（公开）
+router.get('/install/:token/download', async (req, res, next) => {
+  try {
+    const tokenRecord = await CustomOrderArtifactInstallTokenModel.findUsable(req.params.token)
+    if (!tokenRecord) {
+      return res.status(410).json({
+        success: false,
+        error: { message: '安装链接已失效或使用次数已耗尽' },
+      })
+    }
+
+    const submission = await CustomOrderModel.findSubmissionById(tokenRecord.order_id, tokenRecord.submission_id)
+    if (!submission || !submission.artifact_repository || !submission.artifact_git_path) {
+      return res.status(404).json({ success: false, error: { message: '交付包不存在' } })
+    }
+
+    const consumed = await CustomOrderArtifactInstallTokenModel.consume(req.params.token)
+    if (!consumed) {
+      return res.status(410).json({
+        success: false,
+        error: { message: '安装链接已失效或使用次数已耗尽' },
+      })
+    }
+
+    const zipBuffer = await loadSubmissionArtifactZipBuffer(submission)
+
+    const fileName = submission.artifact_file_name || `custom-order-${submission.id}.zip`
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`)
+    res.send(zipBuffer)
   } catch (error) {
     next(error)
   }
@@ -192,8 +256,8 @@ router.post('/:id/submissions', authenticate, submissionUpload.single('package')
       return res.status(400).json({ success: false, error: { message: '请上传 ZIP 交付包（字段名 package）' } })
     }
 
-    if (![order.developer_id, null].includes(req.user.id) && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, error: { message: '仅指派开发者可提交方案' } })
+    if (order.developer_id && order.developer_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: { message: '当前仅被指派开发者可继续提交方案' } })
     }
 
     const manifestResult = extractManifest(req.file.path)
@@ -241,16 +305,12 @@ router.post('/:id/submissions', authenticate, submissionUpload.single('package')
       parsed_manifest: parsedManifest,
     })
 
-    if (order.status === 'open') {
-      await CustomOrderModel.assignDeveloper(order.id, req.user.id)
-    }
-
     await CustomOrderModel.createMessage({
       order_id: req.params.id,
       sender_id: req.user.id,
       role: req.user.role === 'admin' ? 'admin' : 'developer',
       content: `开发者提交了新方案：${submission.title}`,
-      metadata: { type: 'submission', submission_id: submission.id },
+      metadata: { type: 'submission', submission_id: submission.id, needs_assignment: !order.developer_id },
     })
 
     res.status(201).json({
@@ -288,6 +348,145 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
   }
 })
 
+// 生成推荐安装命令
+router.get('/:id/submissions/:submissionId/artifact/install-command', authenticate, async (req, res, next) => {
+  try {
+    const order = await CustomOrderModel.findById(req.params.id)
+    if (!order) {
+      return res.status(404).json({ success: false, error: { message: '需求不存在' } })
+    }
+    if (!(await CustomOrderModel.canViewOrder(order, req.user))) {
+      return res.status(403).json({ success: false, error: { message: '无权限获取安装命令' } })
+    }
+
+    const submission = await CustomOrderModel.findSubmissionById(req.params.id, req.params.submissionId)
+    if (!submission || !submission.artifact_repository || !submission.artifact_git_path || !submission.artifact_id) {
+      return res.status(404).json({ success: false, error: { message: '交付包不存在' } })
+    }
+
+    const requestedTtlMinutes = Number.parseInt(String(req.query?.ttlMinutes || ''), 10)
+    const ttlMinutes = Number.isFinite(requestedTtlMinutes)
+      ? Math.min(60, Math.max(5, requestedTtlMinutes))
+      : 20
+
+    const { token, record } = await CustomOrderArtifactInstallTokenModel.issue({
+      orderId: req.params.id,
+      submissionId: req.params.submissionId,
+      artifactId: submission.artifact_id,
+      userId: req.user.id,
+      maxUses: 3,
+      ttlMinutes,
+      metadata: {
+        userAgent: req.get('user-agent') || null,
+        ip: req.ip || null,
+        source: 'custom-order-install-command',
+      },
+    })
+
+    const serverOrigin = buildServerOrigin(req)
+    const signedDownloadUrl = `${serverOrigin}/api/custom-orders/install/${token}/download`
+    const command = `openclew install "${signedDownloadUrl}"`
+
+    return res.json({
+      success: true,
+      data: {
+        recommended: true,
+        command,
+        expiresAt: record.expires_at,
+        maxUses: record.max_uses,
+        signedDownloadUrl,
+        fallbackDownloadEndpoint: `${serverOrigin}/api/custom-orders/${req.params.id}/submissions/${req.params.submissionId}/artifact/download`,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// 为指定 submission 创建试用会话（强制绑定该 artifact）
+router.post('/:id/submissions/:submissionId/trial-sessions', authenticate, async (req, res, next) => {
+  try {
+    const order = await CustomOrderModel.findById(req.params.id)
+    if (!order) {
+      return res.status(404).json({ success: false, error: { message: '需求不存在' } })
+    }
+    if (!(await CustomOrderModel.canViewOrder(order, req.user))) {
+      return res.status(403).json({ success: false, error: { message: '无权限创建试用会话' } })
+    }
+
+    const submission = await CustomOrderModel.findSubmissionById(req.params.id, req.params.submissionId)
+    if (!submission || !submission.artifact_repository || !submission.artifact_git_path) {
+      return res.status(404).json({ success: false, error: { message: '交付包不存在' } })
+    }
+    if (!submission.agent_id) {
+      return res.status(409).json({
+        success: false,
+        error: { message: '该方案未关联 Agent，暂无法创建试用会话' },
+      })
+    }
+
+    const zipBuffer = await loadSubmissionArtifactZipBuffer(submission)
+    const artifactSha = String(submission.artifact_sha256 || '')
+    if (!artifactSha) {
+      return res.status(409).json({
+        success: false,
+        error: { message: '交付包缺少 hash 元数据，无法校验试用一致性' },
+      })
+    }
+
+    const cacheDir = path.join(backendRoot, '.trial-runtime', 'custom-order-artifacts')
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true })
+    }
+    const localZipPath = path.join(cacheDir, `${artifactSha}.zip`)
+    await fsp.writeFile(localZipPath, zipBuffer)
+
+    const parsedManifest = (() => {
+      if (!submission.parsed_manifest) return null
+      if (typeof submission.parsed_manifest === 'object') return submission.parsed_manifest
+      try {
+        return JSON.parse(submission.parsed_manifest)
+      } catch {
+        return null
+      }
+    })()
+
+    const result = await createTrialSession({
+      userId: req.user.id,
+      agentId: submission.agent_id,
+      packageOverride: {
+        localPath: localZipPath,
+      },
+      metadataPatch: {
+        source: 'custom-order-submission-trial',
+        custom_order_id: req.params.id,
+        custom_order_submission_id: req.params.submissionId,
+        artifact_id: submission.artifact_id || null,
+        artifact_sha256: artifactSha,
+      },
+    })
+
+    res.status(201).json({
+      success: true,
+      data: {
+        sessionId: result.session.id,
+        status: result.session.status,
+        runtimeType: result.session.runtime_type,
+        expiresAt: result.session.expires_at,
+        remainingTrials: result.remainingTrials,
+        provisioning: result.session.metadata?.provisioning || null,
+        artifact: {
+          id: submission.artifact_id,
+          sha256: artifactSha,
+          submissionId: req.params.submissionId,
+        },
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
 // 下载交付包（平台代理下载，避免暴露外链）
 router.get('/:id/submissions/:submissionId/artifact/download', authenticate, async (req, res, next) => {
   try {
@@ -304,10 +503,7 @@ router.get('/:id/submissions/:submissionId/artifact/download', authenticate, asy
       return res.status(404).json({ success: false, error: { message: '交付包不存在' } })
     }
 
-    const zipBuffer = await downloadGithubArtifact({
-      repository: submission.artifact_repository,
-      gitPath: submission.artifact_git_path,
-    })
+    const zipBuffer = await loadSubmissionArtifactZipBuffer(submission)
     const fileName = submission.artifact_file_name || `custom-order-${req.params.submissionId}.zip`
     res.setHeader('Content-Type', 'application/zip')
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`)

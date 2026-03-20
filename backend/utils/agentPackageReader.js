@@ -38,27 +38,8 @@ function openAgentZip(filePath) {
   }
 }
 
-/**
- * 从 Agent 包 URL 中提取配置文件内容
- * @param {string} packageUrl - 相对路径，如 /uploads/agents/xxx.zip
- * @returns {{ identity, rules, memory, tools, readme }} 各文件的文本内容（不存在则为 null）
- */
-export async function extractAgentFiles(packageUrl) {
-  const filePath = resolveAgentPackagePath(packageUrl)
-
-  try {
-    await fs.access(filePath)
-  } catch {
-    throw createAgentPackageError(
-      'Agent 包文件不存在，暂时无法预览或试用。',
-      404,
-      'agent_package_missing'
-    )
-  }
-
-  const zip = openAgentZip(filePath)
+function extractFilesFromZip(zip) {
   const entries = zip.getEntries()
-
   const result = {}
 
   for (const [key, candidates] of Object.entries(FILE_MAP)) {
@@ -79,7 +60,37 @@ export async function extractAgentFiles(packageUrl) {
   return result
 }
 
+/**
+ * 从 Agent 包 URL 中提取配置文件内容
+ * @param {string} packageUrl - 相对路径，如 /uploads/agents/xxx.zip
+ * @returns {{ identity, rules, memory, tools, readme }} 各文件的文本内容（不存在则为 null）
+ */
+export async function extractAgentFiles(packageUrl) {
+  const filePath = resolveAgentPackagePath(packageUrl)
+  return extractAgentFilesByPath(filePath)
+}
+
+export async function extractAgentFilesByPath(filePath) {
+  try {
+    await fs.access(filePath)
+  } catch {
+    throw createAgentPackageError(
+      'Agent 包文件不存在，暂时无法预览或试用。',
+      404,
+      'agent_package_missing'
+    )
+  }
+
+  const zip = openAgentZip(filePath)
+  return extractFilesFromZip(zip)
+}
+
 export async function ensureAgentPackageUsable(packageUrl) {
   await extractAgentFiles(packageUrl)
+  return true
+}
+
+export async function ensureAgentPackageUsableByPath(filePath) {
+  await extractAgentFilesByPath(filePath)
   return true
 }
