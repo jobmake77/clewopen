@@ -19,7 +19,11 @@ const orderCategories = [
 const statusMap = {
   open: { color: 'blue', text: '招标中' },
   in_progress: { color: 'orange', text: '进行中' },
+  awaiting_acceptance: { color: 'purple', text: '待验收' },
+  accepted: { color: 'geekblue', text: '已验收' },
+  disputed: { color: 'red', text: '争议中' },
   completed: { color: 'green', text: '已完成' },
+  closed: { color: 'default', text: '已关闭' },
   cancelled: { color: 'default', text: '已取消' },
 }
 
@@ -119,7 +123,9 @@ function CustomOrder() {
               <Card style={{ marginBottom: 16 }} hoverable className="cream-panel custom-order-card">
                 <Row justify="space-between" align="top" gutter={[12, 12]}>
                   <Col xs={24} md={18}>
-                    <h3 style={{ marginBottom: 8 }}>{order.title}</h3>
+                    <h3 style={{ marginBottom: 8, cursor: 'pointer' }} onClick={() => navigate(`/custom-order/${order.id}`)}>
+                      {order.title}
+                    </h3>
                     <p style={{ color: 'var(--ink-muted)', marginBottom: 12 }}>{order.description}</p>
                     <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                       <Tag color={statusMap[order.status]?.color}>{statusMap[order.status]?.text}</Tag>
@@ -141,6 +147,9 @@ function CustomOrder() {
                       <p style={{ color: 'var(--ink-muted)', fontSize: 12 }}>
                         {order.user_name} 发布于 {new Date(order.created_at).toLocaleDateString()}
                       </p>
+                      <Button type="link" onClick={() => navigate(`/custom-order/${order.id}`)}>
+                        查看详情
+                      </Button>
                     </div>
                   </Col>
                 </Row>

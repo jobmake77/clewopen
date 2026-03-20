@@ -7,6 +7,7 @@ import McpMarket from './pages/McpMarket'
 import SkillDetail from './pages/SkillDetail'
 import McpDetail from './pages/McpDetail'
 import CustomOrder from './pages/CustomOrder'
+import CustomOrderDetail from './pages/CustomOrder/Detail'
 import UserCenter from './pages/UserCenter'
 import UploadAgent from './pages/UploadAgent'
 import UploadSkill from './pages/UploadSkill'
@@ -64,6 +65,7 @@ function App() {
                   <Route path="/mcps" element={<McpMarket />} />
                   <Route path="/mcps/:id" element={<McpDetail />} />
                   <Route path="/custom-order" element={<CustomOrder />} />
+                  <Route path="/custom-order/:id" element={<CustomOrderDetail />} />
                   <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                   <Route path="/legal/terms" element={<TermsOfService />} />
                   <Route path="/legal/ai-usage" element={<AiUsageGuide />} />
