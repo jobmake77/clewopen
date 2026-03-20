@@ -19,11 +19,17 @@ const syncIntervalMinutes = Math.max(5, Number.parseInt(process.env.SYNC_INTERVA
 const SYNC_INTERVAL = syncIntervalMinutes * 60 * 1000
 const RUN_SYNC_ON_START = String(process.env.SYNC_RUN_ON_START || 'true').toLowerCase() !== 'false'
 const MAX_HISTORY = 20
+const GITHUB_SEARCH_PER_PAGE = Math.min(100, Math.max(30, Number.parseInt(process.env.SYNC_GITHUB_PER_PAGE || '100', 10)))
+const GITHUB_SEARCH_MAX_PAGES = Math.max(1, Number.parseInt(process.env.SYNC_GITHUB_MAX_PAGES || '10', 10))
+const GITHUB_REQUEST_INTERVAL_MS = Math.max(500, Number.parseInt(process.env.SYNC_GITHUB_REQUEST_INTERVAL_MS || '1500', 10))
+const GITHUB_MAX_REQUESTS_PER_RUN = Math.max(20, Number.parseInt(process.env.SYNC_GITHUB_MAX_REQUESTS_PER_RUN || '120', 10))
 
 // Openclaw pagination state — persists across syncs to cover all users incrementally
 let openclawUserOffset = 0
 let openclawUserList = null // cached full user directory list
-const OPENCLAW_BATCH_SIZE = 50
+let openclawOffsetLoaded = false
+const OPENCLAW_BATCH_SIZE = Math.max(20, Number.parseInt(process.env.SYNC_OPENCLAW_BATCH_SIZE || '120', 10))
+const OPENCLAW_BOOTSTRAP_MULTIPLIER = Math.max(1, Number.parseInt(process.env.SYNC_OPENCLAW_BOOTSTRAP_MULTIPLIER || '3', 10))
 const OPENCLAW_REPO_STARS = 2683
 
 // ─── GitHub Search Queries ───────────────────────────────
@@ -46,6 +52,23 @@ const SKILL_QUERIES = [
   'llm-tool in:name,description,topics',
   'codex-skills in:name,description,topics',
   'openai-tool in:name,topics',
+  'openclaw in:name,description,topics',
+  'model-context-protocol skill in:name,description,topics',
+  'ai workflow in:name,description,topics',
+  'automation skill in:name,description,topics',
+  'prompt-engineering in:name,description,topics',
+  'mcp client in:name,description,topics',
+  'function-calling in:name,description,topics',
+  'rag agent in:name,description,topics',
+  'multi-agent in:name,description,topics',
+  'agent framework in:name,description,topics',
+  'tool calling in:name,description,topics',
+  'llm workflow in:name,description,topics',
+  'memory agent in:name,description,topics',
+  'reasoning agent in:name,description,topics',
+  'autonomous agent in:name,description,topics',
+  'ai sdk in:name,description,topics',
+  'developer agent in:name,description,topics',
 ]
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -107,53 +130,69 @@ async function ensureUser(login, avatarUrl) {
 
 // ─── GitHub Fetch ────────────────────────────────────────
 
-async function fetchGitHubRepos(queries) {
+async function fetchGitHubRepos(queries, maxRequestsPerRun = GITHUB_MAX_REQUESTS_PER_RUN) {
   const seen = new Map() // full_name -> repo
+  let requestCount = 0
+  let hitRequestBudget = false
 
   for (const q of queries) {
-    try {
-      const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=100&page=1&sort=stars`
-      const res = await fetch(url, {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'clew-marketplace',
-        },
-      })
-
-      // Check rate limit
-      const remaining = parseInt(res.headers.get('X-RateLimit-Remaining') || '60')
-      const resetTime = parseInt(res.headers.get('X-RateLimit-Reset') || '0')
-
-      if (res.status === 403 || remaining === 0) {
-        const waitMs = Math.max(0, resetTime * 1000 - Date.now()) + 1000
-        logger.warn(`GitHub rate limited, waiting ${Math.ceil(waitMs / 1000)}s`)
-        await sleep(Math.min(waitMs, 60000)) // 最多等 60s
-        continue
+    if (hitRequestBudget) break
+    for (let page = 1; page <= GITHUB_SEARCH_MAX_PAGES; page++) {
+      if (requestCount >= maxRequestsPerRun) {
+        hitRequestBudget = true
+        logger.warn(`GitHub sync request budget reached (${requestCount}/${maxRequestsPerRun}), stop current run and continue next schedule`)
+        break
       }
+      try {
+        const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=${GITHUB_SEARCH_PER_PAGE}&page=${page}&sort=stars`
+        requestCount += 1
+        const res = await fetch(url, {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'clew-marketplace',
+          },
+        })
 
-      if (!res.ok) {
-        logger.warn(`GitHub search "${q}" returned ${res.status}`)
-        continue
-      }
+        // Check rate limit
+        const remaining = parseInt(res.headers.get('X-RateLimit-Remaining') || '60')
+        const resetTime = parseInt(res.headers.get('X-RateLimit-Reset') || '0')
 
-      const data = await res.json()
-      const repos = data.items || []
-
-      for (const repo of repos) {
-        if (!seen.has(repo.full_name)) {
-          seen.set(repo.full_name, repo)
+        if (res.status === 403 || remaining === 0) {
+          const waitMs = Math.max(0, resetTime * 1000 - Date.now()) + 1000
+          logger.warn(`GitHub rate limited, waiting ${Math.ceil(waitMs / 1000)}s (query="${q}" page=${page})`)
+          await sleep(Math.min(waitMs, 60000)) // 最多等 60s
+          break
         }
+
+        if (!res.ok) {
+          logger.warn(`GitHub search "${q}" page=${page} returned ${res.status}`)
+          break
+        }
+
+        const data = await res.json()
+        const repos = data.items || []
+
+        for (const repo of repos) {
+          if (!seen.has(repo.full_name)) {
+            seen.set(repo.full_name, repo)
+          }
+        }
+
+        logger.info(`GitHub search "${q}" page=${page}: ${repos.length} repos (total unique: ${seen.size})`)
+
+        if (repos.length < GITHUB_SEARCH_PER_PAGE) {
+          break
+        }
+
+        await sleep(GITHUB_REQUEST_INTERVAL_MS)
+      } catch (err) {
+        logger.warn(`GitHub search "${q}" page=${page} failed: ${err.message}`)
+        break
       }
-
-      logger.info(`GitHub search "${q}": ${repos.length} repos (total unique: ${seen.size})`)
-
-      // 速率限制：每个请求间隔 2s
-      await sleep(2000)
-    } catch (err) {
-      logger.warn(`GitHub search "${q}" failed: ${err.message}`)
     }
   }
 
+  logger.info(`GitHub search completed: ${requestCount} requests, ${seen.size} unique repos`)
   return Array.from(seen.values())
 }
 
@@ -250,6 +289,44 @@ async function fetchOpenclawUserDirs() {
   return items.filter(i => i.type === 'dir').map(i => i.name)
 }
 
+async function ensureSyncCursorTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS sync_cursors (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+}
+
+async function loadOpenclawOffset(totalUsers = null) {
+  if (openclawOffsetLoaded) return
+  await ensureSyncCursorTable()
+  const result = await query(`SELECT value FROM sync_cursors WHERE key = 'openclaw_offset'`)
+  if (result.rows.length > 0) {
+    const rawOffset = Number.parseInt(String(result.rows[0].value?.offset || '0'), 10)
+    if (Number.isFinite(rawOffset) && rawOffset >= 0) {
+      openclawUserOffset = rawOffset
+    }
+  }
+  if (Number.isFinite(totalUsers) && totalUsers > 0) {
+    openclawUserOffset = openclawUserOffset % totalUsers
+  }
+  openclawOffsetLoaded = true
+}
+
+async function saveOpenclawOffset(offset, totalUsers) {
+  await ensureSyncCursorTable()
+  await query(
+    `INSERT INTO sync_cursors(key, value, updated_at)
+     VALUES ('openclaw_offset', $1::jsonb, CURRENT_TIMESTAMP)
+     ON CONFLICT (key) DO UPDATE SET
+       value = EXCLUDED.value,
+       updated_at = CURRENT_TIMESTAMP`,
+    [JSON.stringify({ offset, totalUsers })]
+  )
+}
+
 async function fetchOpenclawSkillsForUser(owner) {
   const url = `https://api.github.com/repos/openclaw/skills/contents/skills/${encodeURIComponent(owner)}`
   const res = await fetch(url, {
@@ -312,14 +389,18 @@ async function fetchOpenclawSkills() {
 
   // Step 2: Process a batch of users (up to OPENCLAW_BATCH_SIZE API calls)
   const totalUsers = openclawUserList.length
+  await loadOpenclawOffset(totalUsers)
   if (openclawUserOffset >= totalUsers) {
     openclawUserOffset = 0 // wrap around for next cycle
   }
 
   const batchStart = openclawUserOffset
-  const batchEnd = Math.min(openclawUserOffset + OPENCLAW_BATCH_SIZE, totalUsers)
+  const dynamicBatchSize = batchStart === 0
+    ? Math.min(totalUsers, OPENCLAW_BATCH_SIZE * OPENCLAW_BOOTSTRAP_MULTIPLIER)
+    : OPENCLAW_BATCH_SIZE
+  const batchEnd = Math.min(openclawUserOffset + dynamicBatchSize, totalUsers)
   const userBatch = openclawUserList.slice(openclawUserOffset, batchEnd)
-  logger.info(`Openclaw: processing users ${openclawUserOffset + 1}-${batchEnd} of ${totalUsers}`)
+  logger.info(`Openclaw: processing users ${openclawUserOffset + 1}-${batchEnd} of ${totalUsers} (batch=${dynamicBatchSize})`)
 
   for (const owner of userBatch) {
     try {
@@ -363,6 +444,7 @@ async function fetchOpenclawSkills() {
 
   // Advance offset for next sync
   openclawUserOffset = batchEnd >= totalUsers ? 0 : batchEnd
+  await saveOpenclawOffset(openclawUserOffset, totalUsers)
   logger.info(`Openclaw: fetched ${skills.length} skills, next offset: ${openclawUserOffset}`)
 
   return {
