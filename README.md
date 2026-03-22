@@ -271,6 +271,7 @@ openclewopen/
 - [API 文档](docs/api/)
 - [数据库设计](docs/DATABASE_SCHEMA.md)
 - [合规基础上线说明](docs/COMPLIANCE_POLICY_ROLLOUT.md)
+- [试用沙箱隐私联调脚本](docs/TRIAL_PRIVACY_E2E.md)
 - [定制开发工作流 V1（无支付）](docs/CUSTOM_ORDER_WORKFLOW_V1.md)
 - [定制开发 API V1（无支付）](docs/CUSTOM_ORDER_API_V1.md)
 - [贡献指南](CONTRIBUTING.md)
