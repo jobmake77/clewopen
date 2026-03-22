@@ -9,7 +9,13 @@ import LlmSettings from './LlmSettings'
 import TrialRuntime from './TrialRuntime'
 import PublishOps from './PublishOps'
 import UserManagement from './UserManagement'
-import { getPendingAgents, getAllReviews, getAllAgentsAdmin } from '../../services/adminService'
+import InstallOps from './InstallOps'
+import {
+  getPendingAgents,
+  getAllReviews,
+  getAllAgentsAdmin,
+  getGlobalInstallEventsSummary,
+} from '../../services/adminService'
 import './index.css'
 
 function Admin() {
@@ -18,7 +24,9 @@ function Admin() {
     pendingAgents: 0,
     pendingReviews: 0,
     totalAgents: 0,
-    totalApproved: 0
+    totalApproved: 0,
+    recentInstallSuccessRate: 0,
+    recentInstallFailed: 0,
   })
 
   useEffect(() => {
@@ -27,17 +35,28 @@ function Admin() {
 
   const loadStats = async () => {
     try {
-      const [agentsRes, reviewsRes, allAgentsRes] = await Promise.all([
+      const [agentsRes, reviewsRes, allAgentsRes, installSummaryRes] = await Promise.all([
         getPendingAgents({ page: 1, pageSize: 1 }),
         getAllReviews({ page: 1, pageSize: 1, status: 'pending' }),
-        getAllAgentsAdmin({ page: 1, pageSize: 1 })
+        getAllAgentsAdmin({ page: 1, pageSize: 1 }),
+        getGlobalInstallEventsSummary({ recentDays: 7 }),
       ])
+
+      const recentWindowTotals = installSummaryRes?.success
+        ? (installSummaryRes.data?.recentWindowTotals || {})
+        : {}
+      const recentTotal = Number(recentWindowTotals.total || 0)
+      const recentSuccess = Number(recentWindowTotals.success_count || 0)
+      const recentFailed = Number(recentWindowTotals.failed_count || 0)
+      const recentInstallSuccessRate = recentTotal > 0 ? Number(((recentSuccess / recentTotal) * 100).toFixed(1)) : 0
 
       setStats({
         pendingAgents: agentsRes.success ? agentsRes.data.total : 0,
         pendingReviews: reviewsRes.success ? reviewsRes.data.total : 0,
         totalAgents: allAgentsRes.success ? allAgentsRes.data.total : 0,
-        totalApproved: 0
+        totalApproved: 0,
+        recentInstallSuccessRate,
+        recentInstallFailed: recentFailed,
       })
     } catch (error) {
       console.error('加载统计数据失败:', error)
@@ -74,6 +93,11 @@ function Admin() {
       key: 'publish-ops',
       label: <span><ApiOutlined /> 发布运维</span>,
       children: <PublishOps />
+    },
+    {
+      key: 'install-ops',
+      label: <span><DownloadOutlined /> 安装运维</span>,
+      children: <InstallOps />
     },
     {
       key: 'users',
@@ -124,12 +148,15 @@ function Admin() {
         <Col span={6}>
           <Card className="cream-panel">
             <Statistic
-              title="今日概览"
-              value={stats.pendingAgents + stats.pendingReviews}
-              suffix="项待处理"
+              title="近7天安装成功率"
+              value={stats.recentInstallSuccessRate}
+              suffix="%"
               prefix={<DownloadOutlined />}
-              valueStyle={{ color: 'var(--status-danger)' }}
+              valueStyle={{ color: stats.recentInstallFailed > 0 ? 'var(--status-warning)' : 'var(--status-success)' }}
             />
+            <div style={{ marginTop: 8, color: 'var(--ink-muted)', fontSize: 12 }}>
+              安装失败: {stats.recentInstallFailed}
+            </div>
           </Card>
         </Col>
       </Row>

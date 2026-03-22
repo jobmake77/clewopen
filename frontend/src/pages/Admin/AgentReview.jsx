@@ -618,6 +618,54 @@ function AgentReview() {
                 {JSON.stringify(selectedAgent.auto_review_result || {}, null, 2)}
               </pre>
             </Descriptions.Item>
+            <Descriptions.Item label="敏感扫描摘要" span={2}>
+              {selectedAgent.auto_review_result?.sensitive_review ? (
+                <Space wrap>
+                  <Tag color={selectedAgent.auto_review_result.sensitive_review.decision === 'reject' ? 'red' : selectedAgent.auto_review_result.sensitive_review.decision === 'needs_review' ? 'orange' : 'green'}>
+                    {selectedAgent.auto_review_result.sensitive_review.decision}
+                  </Tag>
+                  <Tag>高危: {selectedAgent.auto_review_result.sensitive_review.summary?.highCount || 0}</Tag>
+                  <Tag>中危: {selectedAgent.auto_review_result.sensitive_review.summary?.mediumCount || 0}</Tag>
+                  <Tag>命中: {selectedAgent.auto_review_result.sensitive_review.summary?.findingsCount || 0}</Tag>
+                </Space>
+              ) : (
+                <span>-</span>
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="敏感命中详情" span={2}>
+              {(selectedAgent.auto_review_result?.sensitive_review?.findings || []).length > 0 ? (
+                <div style={{ maxHeight: 180, overflow: 'auto', background: 'var(--surface-muted)', padding: 10, borderRadius: 8 }}>
+                  {selectedAgent.auto_review_result.sensitive_review.findings.slice(0, 20).map((item, index) => (
+                    <div key={`${item.file}-${item.line}-${index}`} style={{ marginBottom: 8 }}>
+                      <Tag color={item.severity === 'high' ? 'red' : 'orange'}>{item.severity}</Tag>
+                      <Tag>{item.category}</Tag>
+                      <span style={{ color: 'var(--ink-muted)' }}>
+                        {item.file}{item.line ? `:${item.line}` : ''} - {item.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span>无</span>
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="平台 Agent 复核" span={2}>
+              {selectedAgent.auto_review_result?.policy_review ? (
+                <div style={{ background: 'var(--surface-muted)', padding: 10, borderRadius: 8 }}>
+                  <Space wrap>
+                    <Tag color="blue">状态: {selectedAgent.auto_review_result.policy_review.status || '-'}</Tag>
+                    <Tag color={selectedAgent.auto_review_result.policy_review.decision === 'reject' ? 'red' : selectedAgent.auto_review_result.policy_review.decision === 'pass' ? 'green' : 'orange'}>
+                      判定: {selectedAgent.auto_review_result.policy_review.decision || '-'}
+                    </Tag>
+                  </Space>
+                  {selectedAgent.auto_review_result.policy_review.message && (
+                    <div style={{ marginTop: 8 }}>{selectedAgent.auto_review_result.policy_review.message}</div>
+                  )}
+                </div>
+              ) : (
+                <span>-</span>
+              )}
+            </Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

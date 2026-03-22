@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress } from 'antd'
+import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress, Radio, Checkbox } from 'antd'
 import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined, AppstoreOutlined, ApartmentOutlined, ReadOutlined, MessageOutlined, PictureOutlined, DeleteOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
 import api from '../../services/api'
-import { getAgentInstallCommand } from '../../services/agentService'
+import {
+  getAgentInstallCommand,
+  getAgentInstallOptions,
+  previewAgentInstallPlan,
+  getAgentInstallHistory,
+  reportAgentInstallFeedback,
+} from '../../services/agentService'
 import {
   createTrialSession,
   endTrialSession,
@@ -50,6 +56,11 @@ const AGENT_PUBLISH_MODE_META = {
   open: '公开分发',
   commercial: '商业分发',
 }
+const INSTALL_MODE_META = {
+  full: { label: '全量安装', description: '导入全部可安装配置，适合首次部署' },
+  enhance: { label: '增强安装', description: '优先导入能力文件，默认不覆盖 MEMORY/SOUL' },
+  custom: { label: '自选文件', description: '手动勾选文件进行精细安装' },
+}
 
 function shouldPollTrialSession(status, provisioningStage) {
   if (status === 'provisioning') return true
@@ -77,9 +88,18 @@ function AgentDetail() {
   const [rateModalVisible, setRateModalVisible] = useState(false)
   const [submittingRate, setSubmittingRate] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const [installCommandVisible, setInstallCommandVisible] = useState(false)
+  const [installWizardVisible, setInstallWizardVisible] = useState(false)
+  const [installOptionsLoading, setInstallOptionsLoading] = useState(false)
+  const [installPreviewLoading, setInstallPreviewLoading] = useState(false)
   const [installCommandLoading, setInstallCommandLoading] = useState(false)
+  const [installFeedbackSubmitting, setInstallFeedbackSubmitting] = useState(false)
+  const [installHistoryLoading, setInstallHistoryLoading] = useState(false)
+  const [installOptionsData, setInstallOptionsData] = useState(null)
+  const [installMode, setInstallMode] = useState('full')
+  const [installSelectedFiles, setInstallSelectedFiles] = useState([])
+  const [installPreviewData, setInstallPreviewData] = useState(null)
   const [installCommandData, setInstallCommandData] = useState(null)
+  const [installHistoryData, setInstallHistoryData] = useState({ events: [], summary: null })
   const [form] = Form.useForm()
 
   // Trial sandbox state
@@ -172,6 +192,18 @@ function AgentDetail() {
     setTrialCloseConfirmVisible(false)
     setEndingTrial(false)
     setTrialSendingElapsedSec(0)
+    setInstallWizardVisible(false)
+    setInstallOptionsLoading(false)
+    setInstallPreviewLoading(false)
+    setInstallCommandLoading(false)
+    setInstallFeedbackSubmitting(false)
+    setInstallHistoryLoading(false)
+    setInstallOptionsData(null)
+    setInstallMode('full')
+    setInstallSelectedFiles([])
+    setInstallPreviewData(null)
+    setInstallCommandData(null)
+    setInstallHistoryData({ events: [], summary: null })
     trialStreamingMessageIdRef.current = null
     trialLocalMessageCounterRef.current = 0
   }, [dispatch, id, loadReviews])
@@ -407,26 +439,105 @@ function AgentDetail() {
     setRateModalVisible(true)
   }
 
-  const handleGetInstallCommand = async () => {
+  const buildSelectedFilesForMode = (mode, optionsData) => {
+    if (!optionsData?.defaults) return []
+    if (mode === 'custom') return []
+    return optionsData.defaults[mode] || []
+  }
+
+  const handleOpenInstallWizard = async () => {
     if (!isAuthenticated) {
       message.warning('请先登录')
       navigate('/login')
       return
     }
 
-    setInstallCommandVisible(true)
+    setInstallWizardVisible(true)
+    setInstallOptionsLoading(true)
+    setInstallHistoryLoading(true)
+    setInstallPreviewData(null)
+    setInstallCommandData(null)
+    try {
+      const [optionsResponse, historyResponse] = await Promise.all([
+        getAgentInstallOptions(id),
+        getAgentInstallHistory(id, { limit: 8 }),
+      ])
+      if (optionsResponse.success) {
+        const optionsData = optionsResponse.data
+        const nextMode = optionsData.recommendedMode || 'full'
+        const nextSelected = buildSelectedFilesForMode(nextMode, optionsData)
+        setInstallOptionsData(optionsData)
+        setInstallMode(nextMode)
+        setInstallSelectedFiles(nextSelected)
+        if (nextMode !== 'custom') {
+          await handleRunInstallPreview({ mode: nextMode, selectedFiles: nextSelected })
+        }
+      }
+      if (historyResponse.success) {
+        setInstallHistoryData(historyResponse.data || { events: [], summary: null })
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '获取安装选项失败')
+      setInstallWizardVisible(false)
+    } finally {
+      setInstallOptionsLoading(false)
+      setInstallHistoryLoading(false)
+    }
+  }
+
+  const handleRunInstallPreview = async (payload = {}) => {
+    setInstallPreviewLoading(true)
+    try {
+      const response = await previewAgentInstallPlan(id, {
+        mode: payload.mode || installMode,
+        selectedFiles: payload.selectedFiles || installSelectedFiles,
+      })
+      if (response.success) {
+        setInstallPreviewData(response.data)
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '安装预检失败')
+    } finally {
+      setInstallPreviewLoading(false)
+    }
+  }
+
+  const handleGenerateInstallCommand = async () => {
     setInstallCommandLoading(true)
     try {
-      const response = await getAgentInstallCommand(id)
+      const response = await getAgentInstallCommand(id, {
+        mode: installMode,
+        selectedFiles: installMode === 'custom' ? installSelectedFiles : undefined,
+      })
       if (response.success) {
         setInstallCommandData(response.data)
       }
     } catch (error) {
       message.error(error.response?.data?.error?.message || '获取安装命令失败')
-      setInstallCommandVisible(false)
     } finally {
       setInstallCommandLoading(false)
     }
+  }
+
+  const handleChangeInstallMode = (event) => {
+    const nextMode = event.target.value
+    setInstallMode(nextMode)
+    if (nextMode === 'custom') {
+      setInstallSelectedFiles([])
+      setInstallPreviewData(null)
+      setInstallCommandData(null)
+      return
+    }
+    const defaults = installOptionsData?.defaults?.[nextMode] || []
+    setInstallSelectedFiles(defaults)
+    setInstallCommandData(null)
+    void handleRunInstallPreview({ mode: nextMode, selectedFiles: defaults })
+  }
+
+  const handleChangeInstallSelectedFiles = (checkedValues) => {
+    const nextFiles = checkedValues.map((item) => String(item))
+    setInstallSelectedFiles(nextFiles)
+    setInstallCommandData(null)
   }
 
   const handleCopyInstallCommand = async () => {
@@ -438,6 +549,75 @@ function AgentDetail() {
       message.success('安装命令已复制')
     } catch (error) {
       message.error('复制失败，请手动复制')
+    }
+  }
+
+  const handleCopyDownloadCommand = async () => {
+    const command = installCommandData?.downloadCommand
+    if (!command) return
+
+    try {
+      await navigator.clipboard.writeText(command)
+      message.success('下载命令已复制')
+    } catch (error) {
+      message.error('复制失败，请手动复制')
+    }
+  }
+
+  const handleReportInstallFeedback = async (status) => {
+    if (!installCommandData?.installCommand || installFeedbackSubmitting) {
+      return
+    }
+
+    let errorMessage = null
+    let reasonCategory = null
+    if (status === 'failed') {
+      const categoryInput = window.prompt(
+        '可选：失败分类（timeout/network/auth/dependency/validation/storage/permission/other）',
+        'other'
+      )
+      const normalizedCategory = String(categoryInput || '').trim().toLowerCase()
+      if (normalizedCategory) {
+        const supported = new Set([
+          'timeout',
+          'network',
+          'auth',
+          'dependency',
+          'validation',
+          'storage',
+          'permission',
+          'other',
+          'unknown',
+        ])
+        reasonCategory = supported.has(normalizedCategory) ? normalizedCategory : 'other'
+      }
+      const reason = window.prompt('可选：填写安装失败原因，便于后续优化（可留空）', '')
+      errorMessage = reason ? String(reason).trim() : null
+    }
+
+    setInstallFeedbackSubmitting(true)
+    try {
+      const response = await reportAgentInstallFeedback(id, {
+        mode: installMode,
+        status,
+        includedFiles: installCommandData?.includedFiles || [],
+        errorMessage,
+        metadata: {
+          from: 'agent_detail_install_wizard',
+          ...(reasonCategory ? { reason_category: reasonCategory } : {}),
+        },
+      })
+      if (response.success) {
+        message.success(status === 'success' ? '已记录安装成功' : '已记录安装失败')
+        const historyRes = await getAgentInstallHistory(id, { limit: 8 })
+        if (historyRes.success) {
+          setInstallHistoryData(historyRes.data || { events: [], summary: null })
+        }
+      }
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '记录安装反馈失败')
+    } finally {
+      setInstallFeedbackSubmitting(false)
     }
   }
 
@@ -751,6 +931,21 @@ function AgentDetail() {
         : trialSessionStatus === 'failed'
           ? '试用环境准备失败，请重新开始'
           : '输入消息，或上传图片后发送...'
+  const installAvailableFiles = installOptionsData?.availableFiles || []
+  const installGroupedFiles = installAvailableFiles.reduce((acc, file) => {
+    const group = file.group || 'other'
+    if (!acc[group]) acc[group] = []
+    acc[group].push(file)
+    return acc
+  }, {})
+  const installGroupLabel = {
+    core: '核心人格',
+    rules: '行为规则',
+    capability: '能力扩展',
+    docs: '说明文档',
+    other: '其他文件',
+  }
+  const canRunInstallPreview = installMode !== 'custom' || installSelectedFiles.length > 0
 
   if (loading || !currentAgent) {
     return (
@@ -1033,10 +1228,10 @@ function AgentDetail() {
               block
               icon={<LinkOutlined />}
               style={{ marginBottom: 12 }}
-              onClick={handleGetInstallCommand}
+              onClick={handleOpenInstallWizard}
               disabled={currentAgent.review_stage !== 'published'}
             >
-              获取安装命令
+              安装 Agent
             </Button>
 
             <Button
@@ -1104,30 +1299,119 @@ function AgentDetail() {
       </Row>
 
       <Modal
-        title="安装命令"
-        open={installCommandVisible}
-        onCancel={() => setInstallCommandVisible(false)}
+        title="安装 Agent"
+        open={installWizardVisible}
+        onCancel={() => setInstallWizardVisible(false)}
+        width={760}
         footer={[
-          <Button key="copy" type="primary" onClick={handleCopyInstallCommand}>
-            复制命令
-          </Button>,
-          <Button key="close" onClick={() => setInstallCommandVisible(false)}>
+          <Button key="close" onClick={() => setInstallWizardVisible(false)}>
             关闭
           </Button>,
         ]}
       >
-        {installCommandLoading ? (
+        {installOptionsLoading ? (
           <Spin />
         ) : (
           <div>
-            <p>
-              <strong>分发模式:</strong> {installCommandData?.publishMode === 'commercial' ? '商业分发' : '公开分发'}
-            </p>
-            {installCommandData?.expiresAt && (
-              <p>
-                <strong>命令过期时间:</strong> {new Date(installCommandData.expiresAt).toLocaleString()}
-              </p>
+            <div style={{ marginBottom: 16 }}>
+              <strong>选择安装模式</strong>
+              <Radio.Group
+                onChange={handleChangeInstallMode}
+                value={installMode}
+                style={{ display: 'block', marginTop: 12 }}
+              >
+                {Object.entries(INSTALL_MODE_META).map(([key, meta]) => (
+                  <Radio key={key} value={key} style={{ display: 'block', marginBottom: 8 }}>
+                    {meta.label}
+                    <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginLeft: 24 }}>{meta.description}</div>
+                  </Radio>
+                ))}
+              </Radio.Group>
+            </div>
+
+            {installMode === 'custom' && (
+              <div style={{ marginBottom: 16 }}>
+                <strong>选择要导入的文件</strong>
+                {Object.entries(installGroupedFiles).map(([group, files]) => (
+                  <div key={group} style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 6 }}>
+                      {installGroupLabel[group] || group}
+                    </div>
+                    <Checkbox.Group
+                      value={installSelectedFiles}
+                      onChange={handleChangeInstallSelectedFiles}
+                      style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}
+                    >
+                      {files.map((item) => (
+                        <Checkbox key={item.path} value={item.path}>
+                          {item.path}
+                        </Checkbox>
+                      ))}
+                    </Checkbox.Group>
+                  </div>
+                ))}
+              </div>
             )}
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <Button
+                onClick={() => handleRunInstallPreview()}
+                loading={installPreviewLoading}
+                disabled={!canRunInstallPreview}
+              >
+                运行安装预检
+              </Button>
+              <Button
+                type="primary"
+                onClick={handleGenerateInstallCommand}
+                loading={installCommandLoading}
+                disabled={!canRunInstallPreview}
+              >
+                生成安装命令
+              </Button>
+              <Button onClick={handleCopyInstallCommand} disabled={!installCommandData?.installCommand}>
+                复制命令
+              </Button>
+            </div>
+
+            {installPreviewData && (
+              <div style={{ marginBottom: 12 }}>
+                <Alert
+                  type="info"
+                  showIcon
+                  message={`预检结果：将导入 ${installPreviewData.summary?.selectedCount || 0} 个文件`}
+                  description={`潜在冲突 ${installPreviewData.summary?.conflictsCount || 0}，按模式跳过 ${installPreviewData.summary?.skippedCount || 0}，缺失依赖 ${installPreviewData.summary?.missingDependencyCount || 0}`}
+                />
+                {Array.isArray(installPreviewData.planDetails?.willInstall) && installPreviewData.planDetails.willInstall.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 6 }}>将导入文件</div>
+                    <div style={{ maxHeight: 120, overflow: 'auto', border: '1px solid var(--line-soft)', borderRadius: 8, padding: 8 }}>
+                      {installPreviewData.planDetails.willInstall.map((file) => (
+                        <div key={file} style={{ fontSize: 12 }}>{file}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(installPreviewData.planDetails?.skippedByMode) && installPreviewData.planDetails.skippedByMode.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 6 }}>按模式跳过</div>
+                    <div style={{ maxHeight: 90, overflow: 'auto', border: '1px dashed var(--line-soft)', borderRadius: 8, padding: 8 }}>
+                      {installPreviewData.planDetails.skippedByMode.map((file) => (
+                        <div key={file} style={{ fontSize: 12 }}>{file}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(installPreviewData.warnings) && installPreviewData.warnings.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    {installPreviewData.warnings.map((warning) => (
+                      <Alert key={warning} style={{ marginBottom: 8 }} type="warning" showIcon message={warning} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {installCommandData?.installHint && (
               <Alert
                 style={{ marginBottom: 12 }}
@@ -1136,7 +1420,84 @@ function AgentDetail() {
                 message={installCommandData.installHint}
               />
             )}
-            <Input.TextArea value={installCommandData?.installCommand || ''} autoSize={{ minRows: 3, maxRows: 6 }} readOnly />
+            {installCommandData?.expiresAt && (
+              <p style={{ marginBottom: 8 }}>
+                <strong>命令过期时间:</strong> {new Date(installCommandData.expiresAt).toLocaleString()}
+              </p>
+            )}
+            <Input.TextArea
+              value={installCommandData?.installCommand || ''}
+              placeholder="先运行预检，再生成安装命令"
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              readOnly
+            />
+            {Array.isArray(installCommandData?.includedFiles) && installCommandData.includedFiles.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginBottom: 6 }}>
+                  命令对应文件清单（{installCommandData.includedFiles.length}）
+                </div>
+                <div style={{ maxHeight: 100, overflow: 'auto', border: '1px solid var(--line-soft)', borderRadius: 8, padding: 8 }}>
+                  {installCommandData.includedFiles.map((file) => (
+                    <div key={file} style={{ fontSize: 12 }}>{file}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {installCommandData?.installCommand && (
+              <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                <Button
+                  size="small"
+                  type="primary"
+                  loading={installFeedbackSubmitting}
+                  onClick={() => handleReportInstallFeedback('success')}
+                >
+                  我已安装成功
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  loading={installFeedbackSubmitting}
+                  onClick={() => handleReportInstallFeedback('failed')}
+                >
+                  安装失败，提交反馈
+                </Button>
+              </div>
+            )}
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Button size="small" onClick={handleCopyDownloadCommand} disabled={!installCommandData?.downloadCommand}>
+                复制下载命令
+              </Button>
+              <span style={{ color: 'var(--ink-muted)', fontSize: 12 }}>如安装失败，可先下载 zip 再本地导入</span>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>最近安装记录</div>
+              {installHistoryData?.summary && (
+                <div style={{ color: 'var(--ink-muted)', fontSize: 12, marginBottom: 8 }}>
+                  总计 {installHistoryData.summary.total || 0} 次，成功 {installHistoryData.summary.successCount || 0} 次，失败 {installHistoryData.summary.failedCount || 0} 次
+                </div>
+              )}
+              {installHistoryLoading ? (
+                <Spin size="small" />
+              ) : Array.isArray(installHistoryData?.events) && installHistoryData.events.length > 0 ? (
+                <div style={{ border: '1px solid var(--line-soft)', borderRadius: 8, padding: 8, maxHeight: 160, overflow: 'auto' }}>
+                  {installHistoryData.events.map((event) => (
+                    <div key={event.id} style={{ marginBottom: 8, fontSize: 12 }}>
+                      <Tag color={event.status === 'success' ? 'success' : 'error'}>
+                        {event.status === 'success' ? '成功' : '失败'}
+                      </Tag>
+                      <span style={{ marginRight: 8 }}>模式: {event.mode}</span>
+                      <span style={{ color: 'var(--ink-muted)' }}>{new Date(event.created_at).toLocaleString()}</span>
+                      {event.error_message && (
+                        <div style={{ color: '#b42318', marginTop: 2 }}>原因: {event.error_message}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: 'var(--ink-muted)', fontSize: 12 }}>暂无安装记录</div>
+              )}
+            </div>
           </div>
         )}
       </Modal>

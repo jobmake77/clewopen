@@ -18,10 +18,21 @@ export const getAgentPreview = async (req, res, next) => {
     }
 
     const result = await extractAgentFiles(agent.package_url)
+    const isPrivileged =
+      !!req.user && (req.user.role === 'admin' || req.user.id === agent.author_id)
+
+    if (!isPrivileged) {
+      result.memory = null
+    }
 
     res.json({
       success: true,
-      data: result,
+      data: {
+        ...result,
+        privacy: {
+          memoryVisible: isPrivileged,
+        },
+      },
     })
   } catch (error) {
     next(error)

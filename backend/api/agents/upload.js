@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url'
 import AgentModel from '../../models/Agent.js'
 import { validateAgentPackage } from '../../utils/manifestValidator.js'
 import { runAgentAutoReview } from '../../utils/agentAutoReview.js'
+import { scanAgentPackageSensitiveContent } from '../../utils/agentSensitiveReview.js'
+import { runPolicyAgentReview } from '../../services/agentPolicyReviewService.js'
 import { logger } from '../../config/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -53,6 +55,36 @@ export const upload = multer({
     fileSize: 50 * 1024 * 1024 // 50MB 限制
   }
 })
+
+function buildSensitiveRejectMessage(sensitiveReview) {
+  const highFindings = (sensitiveReview?.findings || []).filter((item) => item.severity === 'high')
+  if (highFindings.length === 0) {
+    return '检测到高危敏感信息，上传已拒绝。请移除密钥、证件、私钥等内容后重试。'
+  }
+  const first = highFindings[0]
+  return `检测到高危敏感信息，上传已拒绝。文件: ${first.file}，类型: ${first.category}，位置: ${first.line ? `第 ${first.line} 行` : '未知行'}。请清理后重试。`
+}
+
+function buildUploadReviewMessage({ autoRejected, sensitiveReview, policyReview }) {
+  if (autoRejected) {
+    if (sensitiveReview?.summary?.highCount > 0) {
+      return buildSensitiveRejectMessage(sensitiveReview)
+    }
+    if (policyReview?.decision === 'reject') {
+      return '平台策略审核拒绝，请根据审核建议修复后重新提交。'
+    }
+    return 'Agent 已被自动审核拒绝，请修复后重新提交'
+  }
+
+  if (sensitiveReview?.summary?.mediumCount > 0) {
+    if (policyReview?.status === 'completed' && policyReview?.decision === 'pass') {
+      return 'Agent 上传成功，已完成策略复核，等待人工审核'
+    }
+    return 'Agent 上传成功，检测到中危信息，已进入平台策略复核与人工审核'
+  }
+
+  return 'Agent 上传成功，已通过自动审核，等待人工审核'
+}
 
 function buildAgentSlug(name = '') {
   const base = String(name || '')
@@ -107,7 +139,7 @@ export const uploadAgent = async (req, res, next) => {
       logger.info(`Agent 包验证警告: ${validationResult.warnings.join(', ')}`)
     }
 
-    logger.info(`Agent 包验证成功，manifest: ${JSON.stringify(validationResult.manifest)}`)
+    logger.info(`Agent 包验证成功: name=${validationResult.manifest?.name || '-'}, version=${validationResult.manifest?.version || '-'}`)
 
     // 使用 manifest 中的信息（如果提供）
     const manifest = validationResult.manifest
@@ -119,8 +151,43 @@ export const uploadAgent = async (req, res, next) => {
       files: validationResult.files,
       validationWarnings: validationResult.warnings,
     })
-    const autoRejected = autoReviewResult.decision === 'reject'
+    const sensitiveReview = scanAgentPackageSensitiveContent(req.file.path)
+    const policyReview =
+      sensitiveReview.decision === 'needs_review'
+        ? await runPolicyAgentReview({
+            resourceType: 'agent',
+            manifest: {
+              name: manifest?.name || name,
+              version: manifest?.version || version,
+              category: manifest?.category || category,
+            },
+            sensitiveReview: {
+              summary: sensitiveReview.summary,
+              findings: sensitiveReview.findings,
+            },
+            autoReviewResult,
+          })
+        : {
+            enabled: false,
+            status: 'skipped',
+            decision: 'pending',
+            message: '未触发平台 Agent 复核',
+          }
+
+    const highSensitiveRejected = sensitiveReview.decision === 'reject'
+    const policyRejected = policyReview.decision === 'reject'
+    const autoRejected = autoReviewResult.decision === 'reject' || highSensitiveRejected || policyRejected
     const nextReviewStage = autoRejected ? 'rejected' : 'pending_manual'
+    const mergedReviewResult = {
+      ...autoReviewResult,
+      sensitive_review: {
+        decision: sensitiveReview.decision,
+        summary: sensitiveReview.summary,
+        findings: sensitiveReview.findings,
+        remediation: sensitiveReview.remediation || [],
+      },
+      policy_review: policyReview,
+    }
 
     const agentData = {
       name: name || manifest.name,
@@ -133,7 +200,7 @@ export const uploadAgent = async (req, res, next) => {
       tags: tags ? JSON.parse(tags) : (manifest.tags || []),
       status: autoRejected ? 'rejected' : 'pending',
       review_stage: nextReviewStage,
-      auto_review_result: autoReviewResult,
+      auto_review_result: mergedReviewResult,
       publish_mode: publishMode,
       publish_status: 'not_published',
       manifest: manifest // 保存完整的 manifest 信息
@@ -145,15 +212,17 @@ export const uploadAgent = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: agent,
-      message: autoRejected
-        ? 'Agent 已被自动审核拒绝，请修复后重新提交'
-        : 'Agent 上传成功，已通过自动审核，等待人工审核',
+      message: buildUploadReviewMessage({
+        autoRejected,
+        sensitiveReview,
+        policyReview,
+      }),
       validation: {
         manifest: validationResult.manifest,
         files: validationResult.files,
         warnings: validationResult.warnings || []
       },
-      review: autoReviewResult,
+      review: mergedReviewResult,
     })
   } catch (error) {
     // 如果创建失败，删除已上传的文件

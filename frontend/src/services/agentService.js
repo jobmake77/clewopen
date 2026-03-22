@@ -23,6 +23,22 @@ export const getAgentInstallCommand = (id, payload = {}) => {
   return api.post(`/agents/${id}/install-command`, payload)
 }
 
+export const getAgentInstallOptions = (id) => {
+  return api.get(`/agents/${id}/install-options`)
+}
+
+export const previewAgentInstallPlan = (id, payload = {}) => {
+  return api.post(`/agents/${id}/install-preview`, payload)
+}
+
+export const getAgentInstallHistory = (id, params = {}) => {
+  return api.get(`/agents/${id}/install-history`, { params })
+}
+
+export const reportAgentInstallFeedback = (id, payload = {}) => {
+  return api.post(`/agents/${id}/install-feedback`, payload)
+}
+
 export const getAgentReviews = (id, params = {}) => {
   return api.get(`/agents/${id}/reviews`, { params })
 }

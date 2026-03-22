@@ -18,8 +18,14 @@ import {
   getAgentPublishJobs,
   getGlobalPublishJobsAdmin,
   getGlobalPublishJobsSummaryAdmin,
+  getGlobalInstallEventsAdmin,
+  getGlobalInstallEventsSummaryAdmin,
   triggerGlobalPublishJobsAlertAdmin,
   retryAgentPublishJob,
+  getAgentInstallOptions,
+  previewAgentInstallPlan,
+  reportAgentInstallFeedback,
+  getAgentInstallHistory,
   createAgentInstallCommand,
   downloadAgentByInstallToken,
 } from './controller.js'
@@ -27,7 +33,7 @@ import { uploadAgent, updateAgent, deleteAgent, upload } from './upload.js'
 import { getAgentPreview } from './preview.js'
 import { trialAgent, getTrialHistory } from './trial.js'
 import { createSessionForAgent } from '../trial-sessions/controller.js'
-import { authenticate, authorize } from '../../middleware/auth.js'
+import { authenticate, authorize, optionalAuth } from '../../middleware/auth.js'
 import { auditLog } from '../../middleware/auditLog.js'
 
 const router = express.Router()
@@ -46,8 +52,10 @@ router.post('/admin/:id/approve', authenticate, authorize('admin'), auditLog('ag
 router.post('/admin/:id/reject', authenticate, authorize('admin'), auditLog('agent_reject'), rejectAgent)
 router.post('/admin/:id/publish', authenticate, authorize('admin'), auditLog('agent_publish'), publishAgent)
 router.get('/admin/publish-jobs/summary', authenticate, authorize('admin'), getGlobalPublishJobsSummaryAdmin)
+router.get('/admin/install-events/summary', authenticate, authorize('admin'), getGlobalInstallEventsSummaryAdmin)
 router.post('/admin/publish-jobs/alerts/trigger', authenticate, authorize('admin'), auditLog('agent_publish_alert'), triggerGlobalPublishJobsAlertAdmin)
 router.get('/admin/publish-jobs', authenticate, authorize('admin'), getGlobalPublishJobsAdmin)
+router.get('/admin/install-events', authenticate, authorize('admin'), getGlobalInstallEventsAdmin)
 router.get('/admin/:id/publish-jobs', authenticate, authorize('admin'), getAgentPublishJobs)
 router.post('/admin/publish-jobs/:jobId/retry', authenticate, authorize('admin'), auditLog('agent_publish_retry'), retryAgentPublishJob)
 
@@ -56,13 +64,17 @@ router.post('/upload', authenticate, authorize('developer', 'admin'), upload.sin
 
 // 动态路由（/:id 参数路由放在最后）
 router.get('/:id', getAgentById)
-router.get('/:id/preview', getAgentPreview)
+router.get('/:id/preview', optionalAuth, getAgentPreview)
 router.get('/:id/dependencies', getAgentDependencies)
 router.get('/:id/trial/history', authenticate, getTrialHistory)
 router.post('/:id/trial', authenticate, trialAgent)
 router.post('/:id/trial-sessions', authenticate, createSessionForAgent)
 router.get('/:id/reviews', getAgentReviews)
 router.get('/:id/stats', getAgentStats)
+router.get('/:id/install-options', authenticate, getAgentInstallOptions)
+router.post('/:id/install-preview', authenticate, previewAgentInstallPlan)
+router.get('/:id/install-history', authenticate, getAgentInstallHistory)
+router.post('/:id/install-feedback', authenticate, reportAgentInstallFeedback)
 router.post('/:id/install-command', authenticate, createAgentInstallCommand)
 router.post('/:id/download', authenticate, downloadAgent)
 router.post('/:id/rate', authenticate, rateAgent)

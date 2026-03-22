@@ -46,6 +46,14 @@ export const getGlobalAgentPublishJobsSummary = (params) => {
   return api.get('/agents/admin/publish-jobs/summary', { params })
 }
 
+export const getGlobalInstallEventsSummary = (params) => {
+  return api.get('/agents/admin/install-events/summary', { params })
+}
+
+export const getGlobalInstallEvents = (params) => {
+  return api.get('/agents/admin/install-events', { params })
+}
+
 export const triggerGlobalPublishJobsAlert = (payload) => {
   return api.post('/agents/admin/publish-jobs/alerts/trigger', payload || {})
 }

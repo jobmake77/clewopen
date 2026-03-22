@@ -3,6 +3,7 @@ import DownloadModel from '../../models/Download.js';
 import ReviewModel from '../../models/Review.js';
 import NotificationModel from '../../models/Notification.js';
 import AgentInstallTokenModel from '../../models/AgentInstallToken.js';
+import AgentInstallEventModel from '../../models/AgentInstallEvent.js';
 import AgentPublishJobModel from '../../models/AgentPublishJob.js';
 import {
   enqueueAgentPublishJob,
@@ -11,6 +12,7 @@ import {
 import { query } from '../../config/database.js';
 import path from 'path';
 import fs from 'fs/promises';
+import AdmZip from 'adm-zip';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,6 +28,207 @@ function buildServerOrigin(req) {
 function resolveStoredPackagePath(packageUrl) {
   const backendRoot = path.resolve(__dirname, '../..');
   return path.join(backendRoot, String(packageUrl || '').replace(/^\/+/, ''));
+}
+
+const INSTALL_MODE_FULL = 'full';
+const INSTALL_MODE_ENHANCE = 'enhance';
+const INSTALL_MODE_CUSTOM = 'custom';
+const SUPPORTED_INSTALL_MODES = new Set([
+  INSTALL_MODE_FULL,
+  INSTALL_MODE_ENHANCE,
+  INSTALL_MODE_CUSTOM,
+]);
+const ENHANCE_EXCLUDE_BASENAMES = new Set(['memory.md', 'soul.md']);
+
+function buildNormalizedErrorReasonSql(errorExpr, metadataExpr = null) {
+  const metadataCategoryExpr = metadataExpr
+    ? `LOWER(COALESCE(NULLIF(BTRIM(${metadataExpr} ->> 'reason_category'), ''), ''))`
+    : `''`
+  return `
+    CASE
+      WHEN ${metadataCategoryExpr} IN ('timeout','network','auth','dependency','validation','storage','permission','other','unknown')
+        THEN ${metadataCategoryExpr}
+      WHEN ${errorExpr} IS NULL OR BTRIM(${errorExpr}) = '' THEN 'unknown'
+      WHEN LOWER(${errorExpr}) LIKE '%timeout%' OR LOWER(${errorExpr}) LIKE '%timed out%' THEN 'timeout'
+      WHEN LOWER(${errorExpr}) LIKE '%network%' OR LOWER(${errorExpr}) LIKE '%enotfound%' OR LOWER(${errorExpr}) LIKE '%econn%' THEN 'network'
+      WHEN LOWER(${errorExpr}) LIKE '%unauthorized%' OR LOWER(${errorExpr}) LIKE '%forbidden%' OR LOWER(${errorExpr}) LIKE '%401%' OR LOWER(${errorExpr}) LIKE '%403%' OR LOWER(${errorExpr}) LIKE '%auth%' THEN 'auth'
+      WHEN LOWER(${errorExpr}) LIKE '%dependency%' OR LOWER(${errorExpr}) LIKE '%module not found%' OR LOWER(${errorExpr}) LIKE '%not found%' THEN 'dependency'
+      WHEN LOWER(${errorExpr}) LIKE '%invalid%' OR LOWER(${errorExpr}) LIKE '%parse%' OR LOWER(${errorExpr}) LIKE '%manifest%' THEN 'validation'
+      WHEN LOWER(${errorExpr}) LIKE '%disk%' OR LOWER(${errorExpr}) LIKE '%storage%' OR LOWER(${errorExpr}) LIKE '%space%' THEN 'storage'
+      WHEN LOWER(${errorExpr}) LIKE '%permission%' OR LOWER(${errorExpr}) LIKE '%denied%' OR LOWER(${errorExpr}) LIKE '%eacces%' THEN 'permission'
+      ELSE 'other'
+    END
+  `
+}
+
+function getReasonSuggestedAction(reasonCategory) {
+  const key = String(reasonCategory || 'unknown').toLowerCase()
+  const mapping = {
+    timeout: '优先检查 trial/runtime 网络连通性与上游响应时延，必要时延长超时并重试。',
+    network: '检查 DNS、出口网络、目标域名可达性与代理配置，确认无临时封禁。',
+    auth: '检查 API Key/Token 是否过期、权限范围是否正确，并核验请求头格式。',
+    dependency: '检查 Agent manifest 依赖声明，确认所需 Skill/MCP 已同步可用。',
+    validation: '检查 ZIP 包结构与 manifest 字段合法性，重点核对必填文件与版本格式。',
+    storage: '检查磁盘空间、对象存储配额和 I/O 错误，必要时执行清理任务。',
+    permission: '检查运行账号与目录权限（读写/执行），确认容器挂载路径权限正确。',
+    other: '查看最近失败样本日志，按高频关键词补充新的归一规则与专项告警。',
+    unknown: '先抓取最近失败原文进行人工分类，再补充自动归一规则。',
+  }
+  return mapping[key] || mapping.unknown
+}
+
+function normalizeZipEntryName(name) {
+  return String(name || '').replace(/^\/+/, '').replace(/\\/g, '/');
+}
+
+function getEntryBasename(entryName) {
+  const normalized = normalizeZipEntryName(entryName);
+  const parts = normalized.split('/');
+  return (parts[parts.length - 1] || '').toLowerCase();
+}
+
+function getInstallFileGroup(entryName) {
+  const normalized = normalizeZipEntryName(entryName).toLowerCase();
+  const basename = getEntryBasename(entryName);
+
+  if (basename === 'identity.md' || basename === 'soul.md' || basename === 'memory.md') {
+    return 'core';
+  }
+  if (basename === 'rules.md' || basename === 'agents.md') {
+    return 'rules';
+  }
+  if (basename === 'tools.md' || basename === 'skills.md' || basename === 'mcp.md') {
+    return 'capability';
+  }
+  if (basename === 'manifest.json' || basename === 'readme.md' || normalized.includes('/docs/')) {
+    return 'docs';
+  }
+  return 'other';
+}
+
+function buildInstallModes(availableFiles) {
+  const all = availableFiles.map((item) => item.path);
+  const enhance = availableFiles
+    .filter((item) => !ENHANCE_EXCLUDE_BASENAMES.has(item.basename))
+    .map((item) => item.path);
+  return {
+    full: all,
+    enhance,
+    custom: [],
+  };
+}
+
+function resolveSelectedFiles({ mode, selectedFiles, availableFilePaths, defaults }) {
+  const availableSet = new Set(availableFilePaths);
+  if (mode === INSTALL_MODE_FULL) {
+    return defaults.full;
+  }
+  if (mode === INSTALL_MODE_ENHANCE) {
+    return defaults.enhance;
+  }
+  if (!Array.isArray(selectedFiles) || selectedFiles.length === 0) {
+    const error = new Error('custom 模式必须至少选择 1 个文件');
+    error.statusCode = 400;
+    throw error;
+  }
+  const normalized = selectedFiles
+    .map((item) => normalizeZipEntryName(item))
+    .filter((item) => Boolean(item));
+  const unique = [...new Set(normalized)];
+  const invalid = unique.filter((item) => !availableSet.has(item));
+  if (invalid.length > 0) {
+    const error = new Error(`存在无效文件路径: ${invalid.slice(0, 3).join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return unique;
+}
+
+async function listAgentPackageInstallFiles(packageUrl) {
+  const filePath = resolveStoredPackagePath(packageUrl);
+  await fs.access(filePath);
+  const zip = new AdmZip(filePath);
+  const entries = zip
+    .getEntries()
+    .filter((entry) => !entry.isDirectory)
+    .map((entry) => normalizeZipEntryName(entry.entryName))
+    .filter((entryName) => {
+      if (!entryName) return false;
+      const basename = getEntryBasename(entryName);
+      return basename.endsWith('.md') || basename === 'manifest.json';
+    });
+
+  const uniqueEntries = [...new Set(entries)];
+  const installFiles = uniqueEntries.map((entryName) => ({
+    path: entryName,
+    basename: getEntryBasename(entryName),
+    group: getInstallFileGroup(entryName),
+  }));
+
+  return installFiles.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function resolveMissingDependencies(manifestDependencies = {}) {
+  const declaredSkills = Array.isArray(manifestDependencies.skills)
+    ? manifestDependencies.skills.filter((item) => typeof item === 'string' && item.trim())
+    : [];
+  const declaredMcps = Array.isArray(manifestDependencies.mcps)
+    ? manifestDependencies.mcps.filter((item) => typeof item === 'string' && item.trim())
+    : [];
+
+  const found = {
+    skills: [],
+    mcps: [],
+  };
+
+  if (declaredSkills.length > 0) {
+    const result = await query(
+      `SELECT name
+       FROM skills
+       WHERE status = 'approved'
+         AND deleted_at IS NULL
+         AND name = ANY($1::text[])`,
+      [declaredSkills]
+    );
+    found.skills = result.rows.map((row) => row.name);
+  }
+
+  if (declaredMcps.length > 0) {
+    const result = await query(
+      `SELECT name
+       FROM mcps
+       WHERE status = 'approved'
+         AND deleted_at IS NULL
+         AND name = ANY($1::text[])`,
+      [declaredMcps]
+    );
+    found.mcps = result.rows.map((row) => row.name);
+  }
+
+  return {
+    skills: declaredSkills.filter((item) => !found.skills.includes(item)),
+    mcps: declaredMcps.filter((item) => !found.mcps.includes(item)),
+    packages: Array.isArray(manifestDependencies.packages) ? manifestDependencies.packages : [],
+  };
+}
+
+function buildInstallWarnings({ mode, selectedFiles, missingDependencies, publishMode }) {
+  const warnings = [];
+  const lowerFileNames = selectedFiles.map((item) => getEntryBasename(item));
+
+  if (mode === INSTALL_MODE_FULL || lowerFileNames.includes('memory.md') || lowerFileNames.includes('soul.md')) {
+    warnings.push('当前安装可能覆盖本地 MEMORY/SOUL 配置，建议先备份当前工作区。');
+  }
+
+  if (missingDependencies.skills.length > 0 || missingDependencies.mcps.length > 0) {
+    warnings.push('检测到部分 Skill/MCP 依赖未在平台可用，落地效果可能受影响。');
+  }
+
+  if (publishMode === 'commercial') {
+    warnings.push('商业分发链接具有时效与次数限制，请尽快执行安装。');
+  }
+
+  return warnings;
 }
 
 export const getAgents = async (req, res, next) => {
@@ -663,6 +866,184 @@ export const getGlobalPublishJobsSummaryAdmin = async (req, res, next) => {
   }
 }
 
+export const getGlobalInstallEventsSummaryAdmin = async (req, res, next) => {
+  try {
+    const requestedDays = Number.parseInt(String(req.query?.recentDays || '7'), 10)
+    const recentDays = Number.isFinite(requestedDays)
+      ? Math.min(30, Math.max(1, requestedDays))
+      : 7
+    const normalizedReasonSql = buildNormalizedErrorReasonSql('error_message', 'metadata')
+
+    const totalsResult = await query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE status = 'success')::int AS success_count,
+         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count
+       FROM agent_install_events`
+    )
+    const recentTotalsResult = await query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE status = 'success')::int AS success_count,
+         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count
+       FROM agent_install_events
+       WHERE created_at >= NOW() - ($1::text || ' day')::interval`,
+      [String(recentDays)]
+    )
+    const topFailedAgentsResult = await query(
+      `SELECT
+         e.agent_id,
+         a.name AS agent_name,
+         COUNT(*)::int AS failed_count,
+         MAX(e.created_at) AS latest_failed_at
+       FROM agent_install_events e
+       LEFT JOIN agents a ON a.id = e.agent_id
+       WHERE e.status = 'failed'
+         AND e.created_at >= NOW() - ($1::text || ' day')::interval
+       GROUP BY e.agent_id, a.name
+       ORDER BY failed_count DESC, latest_failed_at DESC
+       LIMIT 10`,
+      [String(recentDays)]
+    )
+    const topFailureReasonsResult = await query(
+      `SELECT
+         reason_category,
+         MIN(raw_reason) AS sample_reason,
+         COUNT(*)::int AS failed_count,
+         MAX(created_at) AS latest_failed_at
+       FROM (
+         SELECT
+           ${normalizedReasonSql} AS reason_category,
+           COALESCE(NULLIF(TRIM(error_message), ''), 'unknown') AS raw_reason,
+           created_at
+         FROM agent_install_events
+         WHERE status = 'failed'
+           AND created_at >= NOW() - ($1::text || ' day')::interval
+       ) t
+       GROUP BY reason_category
+       ORDER BY failed_count DESC, latest_failed_at DESC
+       LIMIT 10`,
+      [String(recentDays)]
+    )
+
+    const totals = totalsResult.rows[0] || { total: 0, success_count: 0, failed_count: 0 }
+    const recentWindowTotals = recentTotalsResult.rows[0] || { total: 0, success_count: 0, failed_count: 0 }
+    const recentTotal = Number(recentWindowTotals.total || 0)
+    const recentSuccessRate = recentTotal > 0
+      ? Number((Number(recentWindowTotals.success_count || 0) / recentTotal).toFixed(4))
+      : 0
+
+    res.json({
+      success: true,
+      data: {
+        windowDays: recentDays,
+        totals,
+        recentWindowTotals,
+        recentSuccessRate,
+        topFailedAgents: topFailedAgentsResult.rows || [],
+        topFailureReasons: (topFailureReasonsResult.rows || []).map((item) => ({
+          reason: item.reason_category,
+          sampleReason: item.sample_reason,
+          failed_count: item.failed_count,
+          latest_failed_at: item.latest_failed_at,
+        })),
+        suggestedActions: (topFailureReasonsResult.rows || []).map((item) => ({
+          reason: item.reason_category,
+          action: getReasonSuggestedAction(item.reason_category),
+          failed_count: item.failed_count,
+          sampleReason: item.sample_reason,
+        })),
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getGlobalInstallEventsAdmin = async (req, res, next) => {
+  try {
+    const requestedPage = Number.parseInt(String(req.query?.page || '1'), 10)
+    const requestedPageSize = Number.parseInt(String(req.query?.pageSize || '20'), 10)
+    const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1
+    const pageSize = Number.isFinite(requestedPageSize)
+      ? Math.min(100, Math.max(1, requestedPageSize))
+      : 20
+    const status = String(req.query?.status || 'all').trim().toLowerCase()
+    const mode = String(req.query?.mode || 'all').trim().toLowerCase()
+    const reasonCategory = String(req.query?.reasonCategory || 'all').trim().toLowerCase()
+    const keyword = String(req.query?.keyword || '').trim()
+    const normalizedReasonSql = buildNormalizedErrorReasonSql('e.error_message', 'e.metadata')
+
+    const whereParts = []
+    const params = []
+    let paramIndex = 1
+
+    if (status !== 'all') {
+      whereParts.push(`e.status = $${paramIndex}`)
+      params.push(status)
+      paramIndex += 1
+    }
+    if (mode !== 'all') {
+      whereParts.push(`e.mode = $${paramIndex}`)
+      params.push(mode)
+      paramIndex += 1
+    }
+    if (reasonCategory !== 'all') {
+      whereParts.push(`${normalizedReasonSql} = $${paramIndex}`)
+      params.push(reasonCategory)
+      paramIndex += 1
+    }
+    if (keyword) {
+      whereParts.push(`(
+        a.name ILIKE $${paramIndex}
+        OR u.username ILIKE $${paramIndex}
+        OR COALESCE(e.error_message, '') ILIKE $${paramIndex}
+      )`)
+      params.push(`%${keyword}%`)
+      paramIndex += 1
+    }
+
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : ''
+    const offset = (page - 1) * pageSize
+
+    const listResult = await query(
+      `SELECT
+         e.*,
+         a.name AS agent_name,
+         a.slug AS agent_slug,
+         u.username AS username,
+         ${normalizedReasonSql} AS normalized_reason
+       FROM agent_install_events e
+       LEFT JOIN agents a ON a.id = e.agent_id
+       LEFT JOIN users u ON u.id = e.user_id
+       ${whereClause}
+       ORDER BY e.created_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, pageSize, offset]
+    )
+    const countResult = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM agent_install_events e
+       LEFT JOIN agents a ON a.id = e.agent_id
+       LEFT JOIN users u ON u.id = e.user_id
+       ${whereClause}`,
+      params
+    )
+
+    res.json({
+      success: true,
+      data: {
+        items: listResult.rows || [],
+        page,
+        pageSize,
+        total: Number(countResult.rows?.[0]?.total || 0),
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const triggerGlobalPublishJobsAlertAdmin = async (req, res, next) => {
   try {
     const recentHours = Number.parseInt(String(req.body?.recentHours || '24'), 10)
@@ -802,12 +1183,226 @@ export const retryAgentPublishJob = async (req, res, next) => {
 };
 
 /**
+ * 获取 Agent 安装选项
+ */
+export const getAgentInstallOptions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const agent = await AgentModel.findById(id);
+    if (!agent || agent.deleted_at) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Agent not found' },
+      });
+    }
+
+    if (agent.status !== 'approved' || agent.review_stage !== 'published') {
+      return res.status(409).json({
+        success: false,
+        error: { message: 'Agent 尚未发布，暂不可获取安装选项' },
+      });
+    }
+
+    const availableFiles = await listAgentPackageInstallFiles(agent.package_url);
+    const defaults = buildInstallModes(availableFiles);
+    const recommendedMode =
+      defaults.full.length > defaults.enhance.length ? INSTALL_MODE_ENHANCE : INSTALL_MODE_FULL;
+
+    res.json({
+      success: true,
+      data: {
+        agentId: agent.id,
+        modes: [
+          { key: INSTALL_MODE_FULL, label: '全量安装', defaultFilesCount: defaults.full.length },
+          { key: INSTALL_MODE_ENHANCE, label: '增强安装', defaultFilesCount: defaults.enhance.length },
+          { key: INSTALL_MODE_CUSTOM, label: '自选文件', defaultFilesCount: 0 },
+        ],
+        availableFiles,
+        defaults,
+        recommendedMode,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 安装预检（dry-run）
+ */
+export const previewAgentInstallPlan = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const requestedMode = String(req.body?.mode || INSTALL_MODE_FULL).trim().toLowerCase();
+    const mode = SUPPORTED_INSTALL_MODES.has(requestedMode) ? requestedMode : INSTALL_MODE_FULL;
+
+    const agent = await AgentModel.findById(id);
+    if (!agent || agent.deleted_at) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Agent not found' },
+      });
+    }
+
+    if (agent.status !== 'approved' || agent.review_stage !== 'published') {
+      return res.status(409).json({
+        success: false,
+        error: { message: 'Agent 尚未发布，暂不可预检安装计划' },
+      });
+    }
+
+    const availableFiles = await listAgentPackageInstallFiles(agent.package_url);
+    const defaults = buildInstallModes(availableFiles);
+    const resolvedFiles = resolveSelectedFiles({
+      mode,
+      selectedFiles: req.body?.selectedFiles,
+      availableFilePaths: availableFiles.map((item) => item.path),
+      defaults,
+    });
+    const missingDependencies = await resolveMissingDependencies(agent.manifest?.dependencies || {});
+    const warnings = buildInstallWarnings({
+      mode,
+      selectedFiles: resolvedFiles,
+      missingDependencies,
+      publishMode: agent.publish_mode || 'open',
+    });
+    const fullSet = new Set(defaults.full);
+    const resolvedSet = new Set(resolvedFiles);
+    const skippedByMode = [...fullSet].filter((file) => !resolvedSet.has(file));
+
+    const conflicts = resolvedFiles
+      .filter((entry) => ['memory.md', 'soul.md'].includes(getEntryBasename(entry)))
+      .map((entry) => ({
+        file: entry,
+        type: 'replace_possible',
+        message: '该文件可能覆盖你的本地个性化配置',
+      }));
+
+    res.json({
+      success: true,
+      data: {
+        mode,
+        resolvedFiles,
+        planDetails: {
+          willInstall: resolvedFiles,
+          skippedByMode,
+        },
+        conflicts,
+        missingDependencies,
+        warnings,
+        summary: {
+          selectedCount: resolvedFiles.length,
+          conflictsCount: conflicts.length,
+          skippedCount: skippedByMode.length,
+          missingDependencyCount:
+            missingDependencies.skills.length + missingDependencies.mcps.length,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 上报安装结果
+ */
+export const reportAgentInstallFeedback = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const requestedMode = String(req.body?.mode || INSTALL_MODE_FULL).trim().toLowerCase();
+    const mode = SUPPORTED_INSTALL_MODES.has(requestedMode) ? requestedMode : INSTALL_MODE_FULL;
+    const status = String(req.body?.status || '').trim().toLowerCase();
+    const supportedStatus = new Set(['success', 'failed']);
+    if (!supportedStatus.has(status)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'status 必须为 success 或 failed' },
+      });
+    }
+
+    const agent = await AgentModel.findById(id);
+    if (!agent || agent.deleted_at) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Agent not found' },
+      });
+    }
+
+    const includedFiles = Array.isArray(req.body?.includedFiles)
+      ? req.body.includedFiles.map((item) => String(item)).filter((item) => Boolean(item))
+      : [];
+    const errorMessage = req.body?.errorMessage ? String(req.body.errorMessage).slice(0, 500) : null;
+
+    const event = await AgentInstallEventModel.create({
+      userId,
+      agentId: agent.id,
+      mode,
+      status,
+      includedFiles,
+      errorMessage,
+      source: 'agent_detail_modal',
+      metadata: req.body?.metadata || {},
+    });
+
+    res.json({
+      success: true,
+      data: event,
+      message: status === 'success' ? '已记录安装成功' : '已记录安装失败',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * 获取当前用户安装历史
+ */
+export const getAgentInstallHistory = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const limit = Number.parseInt(String(req.query?.limit || '20'), 10);
+
+    const agent = await AgentModel.findById(id);
+    if (!agent || agent.deleted_at) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Agent not found' },
+      });
+    }
+
+    const events = await AgentInstallEventModel.listByUserAndAgent(userId, agent.id, limit);
+    const successCount = events.filter((item) => item.status === 'success').length;
+    const failedCount = events.filter((item) => item.status === 'failed').length;
+
+    res.json({
+      success: true,
+      data: {
+        events,
+        summary: {
+          total: events.length,
+          successCount,
+          failedCount,
+          lastSuccessAt: events.find((item) => item.status === 'success')?.created_at || null,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * 生成短期安装命令
  */
 export const createAgentInstallCommand = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    const requestedMode = String(req.body?.mode || INSTALL_MODE_FULL).trim().toLowerCase();
+    const mode = SUPPORTED_INSTALL_MODES.has(requestedMode) ? requestedMode : INSTALL_MODE_FULL;
     const requestedTtlMinutes = Number.parseInt(String(req.body?.ttlMinutes || ''), 10);
     const ttlMinutes = Number.isFinite(requestedTtlMinutes)
       ? Math.min(30, Math.max(5, requestedTtlMinutes))
@@ -828,6 +1423,22 @@ export const createAgentInstallCommand = async (req, res, next) => {
       });
     }
 
+    const availableFiles = await listAgentPackageInstallFiles(agent.package_url);
+    const defaults = buildInstallModes(availableFiles);
+    const includedFiles = resolveSelectedFiles({
+      mode,
+      selectedFiles: req.body?.selectedFiles,
+      availableFilePaths: availableFiles.map((item) => item.path),
+      defaults,
+    });
+    const missingDependencies = await resolveMissingDependencies(agent.manifest?.dependencies || {});
+    const previewWarnings = buildInstallWarnings({
+      mode,
+      selectedFiles: includedFiles,
+      missingDependencies,
+      publishMode: agent.publish_mode || 'open',
+    });
+
     const publishMode = agent.publish_mode || 'open';
     const { token, record } = await AgentInstallTokenModel.issue({
       agentId: agent.id,
@@ -838,32 +1449,49 @@ export const createAgentInstallCommand = async (req, res, next) => {
       metadata: {
         userAgent: req.get('user-agent') || null,
         ip: req.ip || null,
+        mode,
+        included_files: includedFiles,
+        preview_summary: {
+          selectedCount: includedFiles.length,
+          missingDependencies: {
+            skills: missingDependencies.skills.length,
+            mcps: missingDependencies.mcps.length,
+          },
+        },
       },
     });
 
     const serverOrigin = buildServerOrigin(req);
     const controlledDownloadUrl = `${serverOrigin}/api/agents/install/${token}/download`;
     const fallbackFileName = `${agent.slug || agent.name}-${agent.version}.zip`;
+    const includeArg = includedFiles.length > 0
+      ? ` --include "${includedFiles.join(',')}"`
+      : '';
+    const modeArg = ` --mode ${mode}`;
 
     const openInstallCommand =
       agent.package_name && agent.package_registry && agent.package_registry !== 'none'
         ? `npm install ${agent.package_name}@${agent.version}`
-        : `curl -fL "${controlledDownloadUrl}" -o "${fallbackFileName}"`;
+        : `openclew install "${controlledDownloadUrl}"${modeArg}${includeArg}`;
 
     const installCommand =
       publishMode === 'commercial'
-        ? `curl -fL "${controlledDownloadUrl}" -o "${fallbackFileName}"`
-        : openInstallCommand;
+        ? `openclew install "${controlledDownloadUrl}"${modeArg}${includeArg}`
+        : (mode === INSTALL_MODE_FULL ? openInstallCommand : `openclew install "${controlledDownloadUrl}"${modeArg}${includeArg}`);
 
     res.json({
       success: true,
       data: {
         agentId: agent.id,
+        mode,
+        includedFiles,
         publishMode,
         expiresAt: record.expires_at,
         maxUses: record.max_uses,
         installCommand,
         downloadUrl: controlledDownloadUrl,
+        downloadCommand: `curl -fL "${controlledDownloadUrl}" -o "${fallbackFileName}"`,
+        warnings: previewWarnings,
         installHint:
           agent.install_hint ||
           (publishMode === 'commercial'
