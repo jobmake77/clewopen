@@ -18,6 +18,29 @@ const TrialSessionMessageModel = {
     )
     return result.rows[0]
   },
+
+  async purgeBySession(sessionId) {
+    const result = await query(
+      `DELETE FROM trial_session_messages
+       WHERE session_id = $1`,
+      [sessionId]
+    )
+    return result.rowCount || 0
+  },
+
+  async countDailyByUserAndKeySource(userId, keySource, timezone = 'Asia/Shanghai') {
+    const result = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM trial_session_messages tsm
+       JOIN trial_sessions ts ON ts.id = tsm.session_id
+       WHERE ts.user_id = $1
+         AND tsm.role = 'user'
+         AND COALESCE(tsm.metadata->>'keySource', 'platform_temp') = $2
+         AND (tsm.created_at AT TIME ZONE $3)::date = (NOW() AT TIME ZONE $3)::date`,
+      [userId, keySource, timezone]
+    )
+    return Number(result.rows[0]?.count || 0)
+  },
 }
 
 export default TrialSessionMessageModel

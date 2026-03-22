@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress, Radio, Checkbox } from 'antd'
+import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress, Radio, Checkbox, Select, Switch } from 'antd'
 import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined, AppstoreOutlined, ApartmentOutlined, ReadOutlined, MessageOutlined, PictureOutlined, DeleteOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
@@ -21,6 +21,7 @@ import {
   getTrialSessionCapabilities,
   streamTrialSessionMessage,
 } from '../../services/trialService'
+import { listMyLlmConfigs } from '../../services/userLlmConfigService'
 
 const { TextArea } = Input
 const TRIAL_POLL_INTERVAL_MS = 2000
@@ -118,6 +119,13 @@ function AgentDetail() {
   const [trialCloseConfirmVisible, setTrialCloseConfirmVisible] = useState(false)
   const [endingTrial, setEndingTrial] = useState(false)
   const [trialSendingElapsedSec, setTrialSendingElapsedSec] = useState(0)
+  const [trialUserLlmConfigs, setTrialUserLlmConfigs] = useState([])
+  const [trialSelectedUserLlmConfigId, setTrialSelectedUserLlmConfigId] = useState(null)
+  const [trialUseSessionTempKey, setTrialUseSessionTempKey] = useState(false)
+  const [trialTempProvider, setTrialTempProvider] = useState('openai')
+  const [trialTempApiUrl, setTrialTempApiUrl] = useState('')
+  const [trialTempModel, setTrialTempModel] = useState('')
+  const [trialTempApiKey, setTrialTempApiKey] = useState('')
   const trialMessagesRef = useRef(null)
   const trialImageInputRef = useRef(null)
   const trialStreamingMessageIdRef = useRef(null)
@@ -192,6 +200,13 @@ function AgentDetail() {
     setTrialCloseConfirmVisible(false)
     setEndingTrial(false)
     setTrialSendingElapsedSec(0)
+    setTrialUserLlmConfigs([])
+    setTrialSelectedUserLlmConfigId(null)
+    setTrialUseSessionTempKey(false)
+    setTrialTempProvider('openai')
+    setTrialTempApiUrl('')
+    setTrialTempModel('')
+    setTrialTempApiKey('')
     setInstallWizardVisible(false)
     setInstallOptionsLoading(false)
     setInstallPreviewLoading(false)
@@ -661,6 +676,22 @@ function AgentDetail() {
     }
   }
 
+  const loadTrialUserLlmConfigs = async () => {
+    try {
+      const res = await listMyLlmConfigs()
+      if (res.success) {
+        const configs = res.data?.configs || []
+        setTrialUserLlmConfigs(configs)
+        const defaultConfig = configs.find((item) => item.is_default && item.is_enabled) || configs.find((item) => item.is_enabled)
+        setTrialSelectedUserLlmConfigId(defaultConfig?.id || null)
+      }
+    } catch (error) {
+      console.error('Failed to load user llm configs:', error)
+      setTrialUserLlmConfigs([])
+      setTrialSelectedUserLlmConfigId(null)
+    }
+  }
+
   const openTrialModal = async () => {
     if (!isAuthenticated) {
       message.warning('请先登录')
@@ -668,6 +699,7 @@ function AgentDetail() {
       return
     }
     setTrialVisible(true)
+    await loadTrialUserLlmConfigs()
     if (trialSessionId) {
       try {
         await loadTrialSession(trialSessionId)
@@ -729,6 +761,8 @@ function AgentDetail() {
       setTrialExpiresAt(null)
       setTrialInputCapabilities(null)
       setTrialSessionStatus('completed')
+      setTrialUseSessionTempKey(false)
+      setTrialTempApiKey('')
       trialStreamingMessageIdRef.current = null
       await refreshRemainingTrials()
     } catch (error) {
@@ -824,6 +858,28 @@ function AgentDetail() {
 
     const userMsg = trialInput.trim()
     const outgoingAttachments = [...trialAttachments]
+    const runtimeOverride = trialUseSessionTempKey
+      ? {
+          provider: trialTempProvider,
+          apiUrl: trialTempApiUrl,
+          model: trialTempModel,
+          apiKey: trialTempApiKey,
+          authType: trialTempProvider === 'anthropic' ? 'x-api-key' : 'bearer',
+        }
+      : null
+
+    if (trialUseSessionTempKey && (!trialTempApiUrl.trim() || !trialTempModel.trim() || !trialTempApiKey.trim())) {
+      message.warning('请完整填写会话临时 Key 的 Base URL、模型和 API Key')
+      return
+    }
+
+    const payload = {
+      message: userMsg,
+      attachments: outgoingAttachments,
+      userLlmConfigId: trialSelectedUserLlmConfigId || null,
+      runtimeOverride,
+    }
+
     setTrialInput('')
     setTrialAttachments([])
     appendTrialMessage({ role: 'user', content: userMsg, attachments: outgoingAttachments })
@@ -840,42 +896,81 @@ function AgentDetail() {
     )
     setTrialSending(true)
 
-    try {
+    const sendWithStream = async (confirmMediumRisk = false) => {
       let finalEvent = null
-
-      await streamTrialSessionMessage(trialSessionId, userMsg, {
-        onEvent: ({ event, data }) => {
-          if (event === 'status' || event === 'heartbeat') {
-            if (data?.sessionStatus) {
-              setTrialSessionStatus(data.sessionStatus)
-              setTrialLoaded(data.sessionStatus !== 'provisioning')
-            }
-            if (data?.provisioning) {
-              setTrialProvisioning(data.provisioning)
-            }
-            appendStreamingStatusLine(data?.message)
-            return
-          }
-
-          if (event === 'delta') {
-            appendStreamingAssistantDelta(data?.delta || '')
-            return
-          }
-
-          if (event === 'done') {
-            finalEvent = data
-            finalizeStreamingAssistantMessage(data?.response || '')
-            setTrialSessionStatus(data?.status || 'active')
-            setTrialProvisioning({ stage: 'ready', detail: '试用环境已就绪' })
-            setTrialExpiresAt(data?.expiresAt || null)
-          }
+      await streamTrialSessionMessage(
+        trialSessionId,
+        {
+          ...payload,
+          confirmMediumRisk,
         },
-      }, outgoingAttachments)
+        {
+          onEvent: ({ event, data }) => {
+            if (event === 'status' || event === 'heartbeat') {
+              if (data?.sessionStatus) {
+                setTrialSessionStatus(data.sessionStatus)
+                setTrialLoaded(data.sessionStatus !== 'provisioning')
+              }
+              if (data?.provisioning) {
+                setTrialProvisioning(data.provisioning)
+              }
+              appendStreamingStatusLine(data?.message)
+              return
+            }
+
+            if (event === 'delta') {
+              appendStreamingAssistantDelta(data?.delta || '')
+              return
+            }
+
+            if (event === 'done') {
+              finalEvent = data
+              finalizeStreamingAssistantMessage(data?.response || '')
+              setTrialSessionStatus(data?.status || 'active')
+              setTrialProvisioning({ stage: 'ready', detail: '试用环境已就绪' })
+              setTrialExpiresAt(data?.expiresAt || null)
+            }
+          },
+        }
+      )
+      return finalEvent
+    }
+
+    try {
+      let finalEvent = await sendWithStream(false)
 
       if (!finalEvent && trialSessionId) {
         await loadTrialSession(trialSessionId)
       }
     } catch (error) {
+      if (error.response?.data?.error?.code === 'trial_medium_risk_confirmation_required') {
+        const findingsSummary = error.response?.data?.error?.summary
+        const continueSend = await new Promise((resolve) => {
+          Modal.confirm({
+            title: '检测到中敏感信息',
+            content: findingsSummary || '输入中包含姓名/邮箱/手机号等中敏感信息，确认继续发送吗？',
+            okText: '确认继续发送',
+            cancelText: '取消',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          })
+        })
+
+        if (continueSend) {
+          try {
+            await sendWithStream(true)
+            return
+          } catch (retryError) {
+            removeStreamingAssistantMessage()
+            message.error(retryError.response?.data?.error?.message || '发送失败')
+          }
+        } else {
+          removeStreamingAssistantMessage()
+          message.warning('你已取消发送该条消息')
+        }
+        return
+      }
+
       removeStreamingAssistantMessage()
       const errMsg = error.response?.data?.error?.message || error.response?.data?.error || '发送失败'
       message.error(errMsg)
@@ -1587,6 +1682,74 @@ function AgentDetail() {
             />
           </div>
         )}
+
+        <div style={{ marginBottom: 12 }}>
+          <Alert
+            type="info"
+            showIcon
+            message="隐私保护说明"
+            description="试用输入默认最小留存并全链路脱敏，结束会话立即清理；试用数据不会用于模型训练，访问行为会记录审计。"
+          />
+        </div>
+
+        <div
+          style={{
+            marginBottom: 12,
+            border: '1px solid var(--cream-border)',
+            borderRadius: 10,
+            padding: 12,
+            background: '#fff',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>试用模型 Key 来源</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <Select
+              value={trialSelectedUserLlmConfigId}
+              onChange={(value) => setTrialSelectedUserLlmConfigId(value)}
+              placeholder="个人中心已配置 Key（可选）"
+              allowClear
+              options={trialUserLlmConfigs
+                .filter((item) => item.is_enabled)
+                .map((item) => ({
+                  label: `${item.provider_name} / ${item.model_id}${item.is_default ? '（默认）' : ''}`,
+                  value: item.id,
+                }))}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Switch checked={trialUseSessionTempKey} onChange={setTrialUseSessionTempKey} />
+              <span style={{ fontSize: 12 }}>启用会话临时 Key（最高优先）</span>
+            </div>
+          </div>
+
+          {trialUseSessionTempKey && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Select
+                value={trialTempProvider}
+                onChange={setTrialTempProvider}
+                options={[
+                  { label: 'OpenAI', value: 'openai' },
+                  { label: 'Anthropic', value: 'anthropic' },
+                  { label: '其他兼容', value: 'other' },
+                ]}
+              />
+              <Input
+                value={trialTempModel}
+                onChange={(e) => setTrialTempModel(e.target.value)}
+                placeholder="模型名"
+              />
+              <Input
+                value={trialTempApiUrl}
+                onChange={(e) => setTrialTempApiUrl(e.target.value)}
+                placeholder="Base URL"
+              />
+              <Input.Password
+                value={trialTempApiKey}
+                onChange={(e) => setTrialTempApiKey(e.target.value)}
+                placeholder="API Key"
+              />
+            </div>
+          )}
+        </div>
 
         <div
           ref={trialMessagesRef}

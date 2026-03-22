@@ -33,7 +33,7 @@ const sections = [
         <Paragraph>
           平台会调用第三方模型提供方进行推理服务。提交到试用框中的内容可能发送到对应模型服务端进行处理。
         </Paragraph>
-        <Paragraph>具体提供方和当前生效模型可在本页上方“公开合规信息”查看。</Paragraph>
+        <Paragraph>公开页面仅展示第三方处理方类别与数据用途，不展示具体模型厂商品牌。</Paragraph>
       </>
     ),
   },

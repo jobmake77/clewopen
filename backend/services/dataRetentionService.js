@@ -64,6 +64,7 @@ export async function runDataRetentionSweep() {
     notifications: 0,
     trialQuotaGrants: 0,
     oldStarSnapshots: 0,
+    trialDataAccessAudits: 0,
     deletedLogFiles: 0,
     deletedTrialWorkspaces: 0,
   }
@@ -110,6 +111,13 @@ export async function runDataRetentionSweep() {
      WHERE snapshot_date < (CURRENT_DATE - ($1::int * INTERVAL '1 day'))::date`,
     [ACCESS_LOG_RETENTION_DAYS],
     'resource_star_snapshots'
+  )
+
+  result.trialDataAccessAudits = await safeDeleteFromTable(
+    `DELETE FROM trial_data_access_audits
+     WHERE created_at < NOW() - make_interval(days => $1)`,
+    [ACCESS_LOG_RETENTION_DAYS],
+    'trial_data_access_audits'
   )
 
   result.deletedLogFiles = await safeDeleteOldFiles(path.join(backendRoot, 'logs'), LOG_FILE_RETENTION_DAYS)

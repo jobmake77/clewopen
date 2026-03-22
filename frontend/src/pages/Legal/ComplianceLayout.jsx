@@ -63,14 +63,22 @@ export default function ComplianceLayout({ title, subtitle, sections }) {
                 <Tag key={provider}>{provider}</Tag>
               ))}
             </Space>
-            {profile.activeTrialModel && (
-              <Alert
-                type="info"
-                showIcon
-                message={`当前试用模型：${profile.activeTrialModel.provider} / ${profile.activeTrialModel.model}`}
-                description={profile.activeTrialModel.apiUrl}
-                style={{ marginTop: 8 }}
-              />
+            <Alert
+              type="info"
+              showIcon
+              message="第三方模型服务商（动态调整）"
+              description="公开页面不展示具体模型厂商品牌；平台仅披露第三方处理方类别与数据用途。"
+              style={{ marginTop: 8 }}
+            />
+            {Array.isArray(profile.thirdPartyProcessorCategories) && profile.thirdPartyProcessorCategories.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <Text strong>第三方处理用途类别：</Text>
+                <Space wrap style={{ marginTop: 6 }}>
+                  {profile.thirdPartyProcessorCategories.map((entry) => (
+                    <Tag key={entry} color="blue">{entry}</Tag>
+                  ))}
+                </Space>
+              </div>
             )}
           </Card>
         )}

@@ -18,10 +18,12 @@ import {
 import { buildSessionWorkspace, loadSessionWorkspaceFiles } from './sessionBuilder.js'
 import { runPromptSession } from './promptRunner.js'
 import { ensureAgentPackageUsable, ensureAgentPackageUsableByPath } from '../../utils/agentPackageReader.js'
+import { resolveTrialSandboxLlmConfig } from './llmSandboxConfig.js'
 import {
   buildAttachmentSummary,
   buildUserMessageForModel,
 } from './mediaAttachments.js'
+import { redactString } from '../../utils/redaction.js'
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
 const MAX_ACTIVE_SESSIONS_PER_USER = 1
@@ -30,6 +32,8 @@ const PROVISIONING_PROGRESS_INTERVAL_MS = 5000
 const provisioningTasks = new Map()
 const gatewayWarmupTasks = new Map()
 const activeMessageTasks = new Set()
+const STORE_RAW_TRIAL_INPUT = String(process.env.TRIAL_STORE_RAW_INPUT || 'false').toLowerCase() === 'true'
+const PURGE_MESSAGES_ON_SESSION_END = String(process.env.TRIAL_PURGE_MESSAGES_ON_END || 'true').toLowerCase() !== 'false'
 
 function computeExpiryDate(ttlMs = DEFAULT_TTL_MS) {
   return new Date(Date.now() + ttlMs)
@@ -148,17 +152,41 @@ async function destroySessionSandbox(session) {
   await destroyLocalWorkspace(session.workspace_path)
 }
 
-async function runSessionMessage(session, files, history, message, attachments = []) {
-  if (session.runtime_type === 'container') {
-    return runContainerSession(session, history, message, { attachments })
-  }
-
-  return runPromptSession(session, files, history, message, { attachments })
+function buildStoredUserContent(message) {
+  const raw = String(message || '').trim()
+  if (!raw) return ''
+  if (STORE_RAW_TRIAL_INPUT) return raw
+  return `[已按最小留存策略脱敏] ${redactString(raw)}`
 }
 
-async function runSessionMessageStream(session, files, history, message, onEvent, attachments = []) {
+async function maybePurgeSessionMessages(sessionId) {
+  if (!PURGE_MESSAGES_ON_SESSION_END || !sessionId) return
+  await TrialSessionMessageModel.purgeBySession(sessionId)
+}
+
+async function runSessionMessage(session, files, history, message, attachments = [], options = {}) {
   if (session.runtime_type === 'container') {
-    return runContainerSessionStream(session, history, message, { onEvent, attachments })
+    return runContainerSession(session, history, message, {
+      attachments,
+      llmConfig: options.llmConfig,
+      llmResolveOptions: options.llmResolveOptions,
+    })
+  }
+
+  return runPromptSession(session, files, history, message, {
+    attachments,
+    llmConfig: options.llmConfig,
+  })
+}
+
+async function runSessionMessageStream(session, files, history, message, onEvent, attachments = [], options = {}) {
+  if (session.runtime_type === 'container') {
+    return runContainerSessionStream(session, history, message, {
+      onEvent,
+      attachments,
+      llmConfig: options.llmConfig,
+      llmResolveOptions: options.llmResolveOptions,
+    })
   }
 
   onEvent?.({
@@ -167,7 +195,10 @@ async function runSessionMessageStream(session, files, history, message, onEvent
     message: '正在准备试用提示词',
   })
 
-  const result = await runPromptSession(session, files, history, message, { attachments })
+  const result = await runPromptSession(session, files, history, message, {
+    attachments,
+    llmConfig: options.llmConfig,
+  })
 
   onEvent?.({
     type: 'status',
@@ -305,6 +336,8 @@ async function loadTrialMessageContext(sessionId, userId, rawMessage, options = 
     files,
     message,
     attachments,
+    runtimeOverride: options.runtimeOverride || null,
+    userLlmConfigId: options.userLlmConfigId || null,
   }
 }
 
@@ -428,10 +461,15 @@ function startBackgroundGatewayWarmup(session, workspace, agent, sandboxMetadata
 }
 
 async function executeTrialMessage(context, options = {}) {
-  const { session, history, files, message, attachments } = context
+  const { session, history, files, message, attachments, runtimeOverride, userLlmConfigId } = context
   const onEvent = options.onEvent
   const modelMessage = buildUserMessageForModel(message, attachments)
   const attachmentSummary = buildAttachmentSummary(attachments)
+  const resolvedLlmConfig = await resolveTrialSandboxLlmConfig(session, {
+    runtimeOverride,
+    userLlmConfigId,
+  })
+  const keySource = resolvedLlmConfig?.__source || 'platform_temp'
 
   activeMessageTasks.add(session.id)
   try {
@@ -444,15 +482,33 @@ async function executeTrialMessage(context, options = {}) {
     await TrialSessionMessageModel.create({
       session_id: session.id,
       role: 'user',
-      content: message,
-      metadata: attachmentSummary.length > 0 ? { attachments: attachmentSummary } : null,
+      content: buildStoredUserContent(message),
+      metadata: {
+        keySource,
+        privacyRetention: STORE_RAW_TRIAL_INPUT ? 'raw' : 'redacted',
+        ...(attachmentSummary.length > 0 ? { attachments: attachmentSummary } : {}),
+      },
     })
 
     let result
     try {
       result = onEvent
-        ? await runSessionMessageStream(session, files, history, modelMessage, onEvent, attachments)
-        : await runSessionMessage(session, files, history, modelMessage, attachments)
+        ? await runSessionMessageStream(
+          session,
+          files,
+          history,
+          modelMessage,
+          onEvent,
+          attachments,
+          {
+            llmConfig: resolvedLlmConfig,
+            llmResolveOptions: { runtimeOverride, userLlmConfigId },
+          }
+        )
+        : await runSessionMessage(session, files, history, modelMessage, attachments, {
+          llmConfig: resolvedLlmConfig,
+          llmResolveOptions: { runtimeOverride, userLlmConfigId },
+        })
     } catch (error) {
       await handleTrialMessageFailure(session, error)
       throw error
@@ -768,15 +824,36 @@ export async function createTrialSession({ userId, agentId, packageOverride = nu
   }
 }
 
-export async function sendTrialMessage({ sessionId, userId, message, attachments = [] }) {
-  const context = await loadTrialMessageContext(sessionId, userId, message, { attachments })
+export async function sendTrialMessage({
+  sessionId,
+  userId,
+  message,
+  attachments = [],
+  runtimeOverride = null,
+  userLlmConfigId = null,
+}) {
+  const context = await loadTrialMessageContext(sessionId, userId, message, {
+    attachments,
+    runtimeOverride,
+    userLlmConfigId,
+  })
   return executeTrialMessage(context)
 }
 
-export async function streamTrialMessage({ sessionId, userId, message, attachments = [], onEvent }) {
+export async function streamTrialMessage({
+  sessionId,
+  userId,
+  message,
+  attachments = [],
+  onEvent,
+  runtimeOverride = null,
+  userLlmConfigId = null,
+}) {
   const context = await loadTrialMessageContext(sessionId, userId, message, {
     attachments,
     onProvisioningProgress: onEvent,
+    runtimeOverride,
+    userLlmConfigId,
   })
   return executeTrialMessage(context, { onEvent })
 }
@@ -789,6 +866,7 @@ export async function completeTrialSession(session) {
   })
 
   await destroySessionSandbox(session)
+  await maybePurgeSessionMessages(session.id)
 
   return TrialSessionModel.update(session.id, {
     status: 'completed',
@@ -804,6 +882,7 @@ export async function expireTrialSession(session) {
   })
 
   await destroySessionSandbox(session)
+  await maybePurgeSessionMessages(session.id)
 
   return TrialSessionModel.update(session.id, {
     status: 'expired',

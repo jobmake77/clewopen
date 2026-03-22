@@ -150,7 +150,8 @@ async function buildSandboxEnv(session, userMessage, options = {}) {
     }
   }
 
-  const llmConfig = await resolveTrialSandboxLlmConfig(session)
+  const llmConfig =
+    options.llmConfig || await resolveTrialSandboxLlmConfig(session, options.llmResolveOptions)
   const llmMetadata = buildTrialSandboxLlmMetadata(llmConfig)
 
   return {
@@ -316,6 +317,8 @@ export async function installSessionAgent(session, options = {}) {
     poolReuse: options.poolReuse,
     runtimeAgentId: options.runtimeAgentId,
     preserveGateway: options.preserveGateway,
+    llmConfig: options.llmConfig,
+    llmResolveOptions: options.llmResolveOptions,
   })
   const args = buildDockerExecArgs(containerName, config.installCommand, envMap)
 
@@ -416,7 +419,11 @@ export async function runContainerSession(session, history, userMessage, options
 
   await writeConversationState(session, history, userMessage, options)
 
-  const { envMap } = await buildSandboxEnv(session, userMessage)
+  const { envMap } = await buildSandboxEnv(session, userMessage, {
+    llmConfig: options.llmConfig,
+    llmResolveOptions: options.llmResolveOptions,
+    includeLlmConfig: true,
+  })
   const args = buildDockerExecArgs(containerName, config.runCommand, envMap)
 
   let stdout = ''
@@ -449,7 +456,11 @@ export async function runContainerSessionStream(session, history, userMessage, o
 
   await writeConversationState(session, history, userMessage, options)
 
-  const { envMap } = await buildSandboxEnv(session, userMessage)
+  const { envMap } = await buildSandboxEnv(session, userMessage, {
+    llmConfig: options.llmConfig,
+    llmResolveOptions: options.llmResolveOptions,
+    includeLlmConfig: true,
+  })
   const args = buildDockerExecArgs(containerName, config.runCommand, envMap)
   const streamState = {
     lineBuffer: '',

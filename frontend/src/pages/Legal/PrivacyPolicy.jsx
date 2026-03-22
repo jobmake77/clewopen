@@ -8,7 +8,7 @@ const sections = [
     title: '1. 我们收集的数据',
     content: (
       <>
-        <Paragraph>我们仅收集运行服务所必需的信息：账号资料、上传内容、试用会话输入输出、访问日志与运营指标。</Paragraph>
+        <Paragraph>我们仅收集运行服务所必需的信息：账号资料、上传内容、试用会话最小化数据、访问日志与运营指标。</Paragraph>
         <Paragraph>
           <Text strong>默认不采集敏感个人信息</Text>（如身份证号、银行卡号、生物特征等）。
         </Paragraph>
@@ -24,6 +24,7 @@ const sections = [
           '用于账号登录、资源发布、下载和评分等核心功能。',
           '用于试用沙盒运行、问题排查与安全审计。',
           '用于统计分析（如热榜、访问趋势），不用于出售用户数据。',
+          '试用输入和附件默认不会用于模型训练。',
         ]}
         renderItem={(item) => <List.Item>{item}</List.Item>}
       />
@@ -33,7 +34,7 @@ const sections = [
     title: '3. 数据保留周期',
     content: (
       <>
-        <Paragraph>试用消息默认保留 30 天；访问日志/行为日志默认保留 90 天；到期由系统自动清理。</Paragraph>
+        <Paragraph>试用输入默认最小留存，结束会话后立即执行清理；访问日志/行为日志默认保留 90 天；到期由系统自动清理。</Paragraph>
         <Paragraph>如法律法规或争议处理需要，平台可在最小范围内延长保留期限。</Paragraph>
       </>
     ),

@@ -1,6 +1,16 @@
 import UserModel from '../../models/User.js'
 import AgentModel from '../../models/Agent.js'
 import AgentTrialModel from '../../models/AgentTrial.js'
+import UserLlmConfigModel from '../../models/UserLlmConfig.js'
+import { maskSecret } from '../../utils/redaction.js'
+
+function sanitizeUserLlmConfigPayload(record) {
+  if (!record) return null
+  return {
+    ...record,
+    apiKeyMasked: record.api_key ? maskSecret(record.api_key) : '',
+  }
+}
 
 /**
  * 获取用户信息
@@ -176,6 +186,117 @@ export const grantUserAgentTrialQuotaAdmin = async (req, res, next) => {
         quota,
       },
       message: `已为用户 ${user.username} 增加 ${normalizedGrantedCount} 次今日试用机会`,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const listMyLlmConfigs = async (req, res, next) => {
+  try {
+    const list = await UserLlmConfigModel.findByUser(req.user.id)
+    res.json({
+      success: true,
+      data: {
+        configs: list.map(sanitizeUserLlmConfigPayload),
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const createMyLlmConfig = async (req, res, next) => {
+  try {
+    const { provider_name, provider, api_url, apiUrl, model_id, model, api_key, apiKey } = req.body || {}
+    if (!(provider_name || provider) || !(api_url || apiUrl) || !(model_id || model) || !(api_key || apiKey)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: '请完整填写厂商、Base URL、模型和 API Key' },
+      })
+    }
+
+    const created = await UserLlmConfigModel.create({
+      user_id: req.user.id,
+      provider_name: String(provider_name || provider).trim().toLowerCase(),
+      api_url: String(api_url || apiUrl).trim(),
+      model_id: String(model_id || model).trim(),
+      api_key: String(api_key || apiKey).trim(),
+      auth_type: String(req.body?.auth_type || req.body?.authType || 'bearer').trim().toLowerCase(),
+      is_default: Boolean(req.body?.is_default ?? req.body?.isDefault ?? false),
+      is_enabled: req.body?.is_enabled ?? req.body?.isEnabled ?? true,
+    })
+
+    res.status(201).json({
+      success: true,
+      data: {
+        config: sanitizeUserLlmConfigPayload(created),
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const updateMyLlmConfig = async (req, res, next) => {
+  try {
+    const patch = {}
+    const body = req.body || {}
+
+    if (body.provider_name !== undefined || body.provider !== undefined) {
+      patch.provider_name = String(body.provider_name || body.provider).trim().toLowerCase()
+    }
+    if (body.api_url !== undefined || body.apiUrl !== undefined) {
+      patch.api_url = String(body.api_url || body.apiUrl).trim()
+    }
+    if (body.model_id !== undefined || body.model !== undefined) {
+      patch.model_id = String(body.model_id || body.model).trim()
+    }
+    if (body.api_key !== undefined || body.apiKey !== undefined) {
+      patch.api_key = String(body.api_key || body.apiKey).trim()
+    }
+    if (body.auth_type !== undefined || body.authType !== undefined) {
+      patch.auth_type = String(body.auth_type || body.authType).trim().toLowerCase()
+    }
+    if (body.is_default !== undefined || body.isDefault !== undefined) {
+      patch.is_default = Boolean(body.is_default ?? body.isDefault)
+    }
+    if (body.is_enabled !== undefined || body.isEnabled !== undefined) {
+      patch.is_enabled = Boolean(body.is_enabled ?? body.isEnabled)
+    }
+
+    const updated = await UserLlmConfigModel.update(req.user.id, req.params.configId, patch)
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: { message: '配置不存在' },
+      })
+    }
+
+    res.json({
+      success: true,
+      data: {
+        config: sanitizeUserLlmConfigPayload(updated),
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const deleteMyLlmConfig = async (req, res, next) => {
+  try {
+    const deleted = await UserLlmConfigModel.remove(req.user.id, req.params.configId)
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        error: { message: '配置不存在' },
+      })
+    }
+
+    res.json({
+      success: true,
+      data: { id: deleted.id },
     })
   } catch (error) {
     next(error)

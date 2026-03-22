@@ -13,7 +13,10 @@ import {
   Tag,
   Empty,
   Modal,
-  Spin
+  Spin,
+  Select,
+  Switch,
+  Space,
 } from 'antd'
 import {
   UserOutlined,
@@ -26,6 +29,12 @@ import {
 import { updateProfile } from '../../store/slices/authSlice'
 import api from '../../services/api'
 import authService from '../../services/authService'
+import {
+  createMyLlmConfig,
+  deleteMyLlmConfig,
+  listMyLlmConfigs,
+  updateMyLlmConfig,
+} from '../../services/userLlmConfigService'
 import './index.css'
 
 const { TextArea } = Input
@@ -41,8 +50,12 @@ function UserCenter() {
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [passwordModalVisible, setPasswordModalVisible] = useState(false)
+  const [llmConfigs, setLlmConfigs] = useState([])
+  const [loadingLlmConfigs, setLoadingLlmConfigs] = useState(false)
+  const [savingLlmConfig, setSavingLlmConfig] = useState(false)
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
+  const [llmForm] = Form.useForm()
 
   const loadDownloads = useCallback(async () => {
     if (!user?.id) return
@@ -74,13 +87,30 @@ function UserCenter() {
     }
   }, [user?.id])
 
+  const loadMyLlmConfigs = useCallback(async () => {
+    if (!user?.id) return
+    setLoadingLlmConfigs(true)
+    try {
+      const response = await listMyLlmConfigs()
+      if (response.success) {
+        setLlmConfigs(response.data?.configs || [])
+      }
+    } catch (error) {
+      console.error('Failed to load llm configs:', error)
+    } finally {
+      setLoadingLlmConfigs(false)
+    }
+  }, [user?.id])
+
   useEffect(() => {
     if (activeTab === 'downloads') {
       loadDownloads()
     } else if (activeTab === 'agents') {
       loadMyAgents()
+    } else if (activeTab === 'profile') {
+      loadMyLlmConfigs()
     }
-  }, [activeTab, loadDownloads, loadMyAgents])
+  }, [activeTab, loadDownloads, loadMyAgents, loadMyLlmConfigs])
 
   const handleEditProfile = () => {
     form.setFieldsValue({
@@ -108,6 +138,46 @@ function UserCenter() {
       passwordForm.resetFields()
     } catch (error) {
       message.error(error.response?.data?.error || '修改失败')
+    }
+  }
+
+  const handleCreateLlmConfig = async (values) => {
+    setSavingLlmConfig(true)
+    try {
+      await createMyLlmConfig(values)
+      message.success('模型配置已保存')
+      llmForm.resetFields()
+      await loadMyLlmConfigs()
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '保存失败')
+    } finally {
+      setSavingLlmConfig(false)
+    }
+  }
+
+  const handleToggleLlmConfig = async (record, patch) => {
+    setSavingLlmConfig(true)
+    try {
+      await updateMyLlmConfig(record.id, patch)
+      await loadMyLlmConfigs()
+      message.success('配置已更新')
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '更新失败')
+    } finally {
+      setSavingLlmConfig(false)
+    }
+  }
+
+  const handleDeleteLlmConfig = async (record) => {
+    setSavingLlmConfig(true)
+    try {
+      await deleteMyLlmConfig(record.id)
+      await loadMyLlmConfigs()
+      message.success('配置已删除')
+    } catch (error) {
+      message.error(error.response?.data?.error?.message || '删除失败')
+    } finally {
+      setSavingLlmConfig(false)
     }
   }
 
@@ -159,6 +229,118 @@ function UserCenter() {
             <Button icon={<LockOutlined />} onClick={() => setPasswordModalVisible(true)}>
               修改密码
             </Button>
+          </div>
+
+          <div style={{ marginTop: 24 }}>
+            <h3 style={{ marginBottom: 12 }}>模型与 API 配置（BYOK）</h3>
+            <p style={{ color: 'var(--ink-muted)', fontSize: 12, marginBottom: 12 }}>
+              Key 仅服务端加密存储，前端不回显明文。试用时优先级：会话临时输入 &gt; 个人默认配置 &gt; 平台临时 Key。
+            </p>
+            <Form
+              form={llmForm}
+              layout="vertical"
+              onFinish={handleCreateLlmConfig}
+              style={{ border: '1px solid var(--cream-border)', borderRadius: 10, padding: 12, marginBottom: 12 }}
+            >
+              <Space wrap style={{ width: '100%' }}>
+                <Form.Item
+                  name="provider"
+                  label="厂商"
+                  rules={[{ required: true, message: '请选择厂商' }]}
+                  style={{ minWidth: 180, marginBottom: 8 }}
+                >
+                  <Select
+                    options={[
+                      { label: 'OpenAI', value: 'openai' },
+                      { label: 'Anthropic', value: 'anthropic' },
+                      { label: '其他兼容', value: 'other' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="apiUrl"
+                  label="Base URL"
+                  rules={[{ required: true, message: '请输入 Base URL' }]}
+                  style={{ minWidth: 280, marginBottom: 8 }}
+                >
+                  <Input placeholder="https://api.example.com/v1/chat/completions" />
+                </Form.Item>
+                <Form.Item
+                  name="model"
+                  label="默认模型"
+                  rules={[{ required: true, message: '请输入模型名' }]}
+                  style={{ minWidth: 200, marginBottom: 8 }}
+                >
+                  <Input placeholder="gpt-4o / claude..." />
+                </Form.Item>
+                <Form.Item
+                  name="apiKey"
+                  label="API Key"
+                  rules={[{ required: true, message: '请输入 API Key' }]}
+                  style={{ minWidth: 280, marginBottom: 8 }}
+                >
+                  <Input.Password placeholder="sk-..." />
+                </Form.Item>
+                <Form.Item name="isDefault" label="设为默认" valuePropName="checked" style={{ marginBottom: 8 }}>
+                  <Switch />
+                </Form.Item>
+              </Space>
+              <Button type="primary" htmlType="submit" loading={savingLlmConfig}>
+                新增配置
+              </Button>
+            </Form>
+
+            {loadingLlmConfigs ? (
+              <Spin size="small" />
+            ) : llmConfigs.length > 0 ? (
+              <List
+                size="small"
+                dataSource={llmConfigs}
+                renderItem={(item) => (
+                  <List.Item
+                    actions={[
+                      <Button
+                        key={`${item.id}-default`}
+                        type={item.is_default ? 'primary' : 'default'}
+                        size="small"
+                        onClick={() => handleToggleLlmConfig(item, { isDefault: true, isEnabled: true })}
+                        loading={savingLlmConfig}
+                      >
+                        {item.is_default ? '默认中' : '设为默认'}
+                      </Button>,
+                      <Switch
+                        key={`${item.id}-enabled`}
+                        checked={item.is_enabled}
+                        onChange={(checked) => handleToggleLlmConfig(item, { isEnabled: checked })}
+                        loading={savingLlmConfig}
+                      />,
+                      <Button
+                        key={`${item.id}-delete`}
+                        danger
+                        size="small"
+                        onClick={() => handleDeleteLlmConfig(item)}
+                        loading={savingLlmConfig}
+                      >
+                        删除
+                      </Button>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <Space size={8}>
+                          <span>{item.provider_name} / {item.model_id}</span>
+                          {item.is_default ? <Tag color="blue">默认</Tag> : null}
+                          {!item.is_enabled ? <Tag>已停用</Tag> : null}
+                        </Space>
+                      }
+                      description={`${item.api_url} | ${item.apiKeyMasked || '***'}`}
+                    />
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Empty description="你还没有配置个人模型 Key" />
+            )}
           </div>
         </Card>
       )

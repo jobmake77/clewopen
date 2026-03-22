@@ -6,6 +6,10 @@ import {
   getUsersAdmin,
   getUserAgentTrialQuotasAdmin,
   grantUserAgentTrialQuotaAdmin,
+  listMyLlmConfigs,
+  createMyLlmConfig,
+  updateMyLlmConfig,
+  deleteMyLlmConfig,
 } from './controller.js'
 import { authenticate, authorize } from '../../middleware/auth.js'
 
@@ -15,6 +19,11 @@ const router = express.Router()
 router.get('/admin/all', authenticate, authorize('admin'), getUsersAdmin)
 router.get('/admin/:userId/trial-quotas', authenticate, authorize('admin'), getUserAgentTrialQuotasAdmin)
 router.post('/admin/:userId/agents/:agentId/trial-quota/grant', authenticate, authorize('admin'), grantUserAgentTrialQuotaAdmin)
+
+router.get('/me/llm-configs', authenticate, listMyLlmConfigs)
+router.post('/me/llm-configs', authenticate, createMyLlmConfig)
+router.put('/me/llm-configs/:configId', authenticate, updateMyLlmConfig)
+router.delete('/me/llm-configs/:configId', authenticate, deleteMyLlmConfig)
 
 // 获取用户信息
 router.get('/:id', getUserById)

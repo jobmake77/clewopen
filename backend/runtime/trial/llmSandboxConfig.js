@@ -1,4 +1,6 @@
 import LlmConfigModel from '../../models/LlmConfig.js'
+import UserLlmConfigModel from '../../models/UserLlmConfig.js'
+import TrialSessionMessageModel from '../../models/TrialSessionMessage.js'
 import { getEnvLlmConfig } from '../../services/llmConfigBootstrapService.js'
 
 const TRIAL_PROVIDER_ID = 'trial-provider'
@@ -103,6 +105,101 @@ function parseOptionalFloat(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function parseList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function buildError(message, statusCode = 400, code = 'trial_llm_config_invalid') {
+  const err = new Error(message)
+  err.statusCode = statusCode
+  err.code = code
+  return err
+}
+
+function normalizeRuntimeOverride(rawOverride) {
+  if (!rawOverride || typeof rawOverride !== 'object') return null
+
+  const providerName = normalizeLowerText(
+    rawOverride.provider_name || rawOverride.provider || rawOverride.providerName
+  )
+  const apiUrl = normalizeText(rawOverride.api_url || rawOverride.base_url || rawOverride.apiUrl)
+  const apiKey = normalizeText(rawOverride.api_key || rawOverride.apiKey)
+  const modelId = normalizeText(rawOverride.model_id || rawOverride.model || rawOverride.modelId)
+  const authType = normalizeLowerText(rawOverride.auth_type || rawOverride.authType || 'bearer')
+
+  if (!providerName && !apiUrl && !apiKey && !modelId) {
+    return null
+  }
+
+  if (!apiUrl || !apiKey || !modelId) {
+    throw buildError('会话临时模型配置不完整，请填写 Base URL、API Key 和模型名', 400, 'trial_runtime_override_incomplete')
+  }
+
+  return {
+    provider_name: providerName || inferCompatibility({ api_url: apiUrl }),
+    api_url: apiUrl,
+    api_key: apiKey,
+    model_id: modelId,
+    auth_type: authType || 'bearer',
+    max_tokens: parseOptionalInt(rawOverride.max_tokens || rawOverride.maxTokens) ?? 4096,
+    temperature: parseOptionalFloat(rawOverride.temperature) ?? 0.7,
+    capabilities: ['chat', 'trial'],
+    is_enabled: true,
+  }
+}
+
+async function resolveUserLlmConfig(userId, options = {}) {
+  if (!userId) return null
+
+  const requestedId = normalizeText(
+    options.userLlmConfigId || options.user_llm_config_id || options.userConfigId
+  )
+
+  if (requestedId) {
+    const target = await UserLlmConfigModel.findUserConfigById(userId, requestedId)
+    if (!target) {
+      throw buildError('指定的个人模型配置不存在或无权限访问', 404, 'trial_user_llm_config_not_found')
+    }
+    return target
+  }
+
+  return UserLlmConfigModel.findUserDefault(userId)
+}
+
+async function assertPlatformTempKeyPolicy(session, config) {
+  const modelWhitelist = parseList(process.env.TRIAL_PLATFORM_MODEL_WHITELIST)
+  if (modelWhitelist.length > 0) {
+    const normalizedModel = normalizeText(config?.model_id)
+    const allowed = modelWhitelist.some((item) => item.toLowerCase() === normalizedModel.toLowerCase())
+    if (!allowed) {
+      throw buildError('当前试用模型不在平台临时 Key 白名单内，请改用个人 Key', 403, 'trial_platform_model_not_allowed')
+    }
+  }
+
+  const parsedMaxDailyRequests = Number.parseInt(
+    process.env.TRIAL_PLATFORM_KEY_DAILY_REQUEST_LIMIT || '60',
+    10
+  )
+  const maxDailyRequests = Number.isFinite(parsedMaxDailyRequests) ? parsedMaxDailyRequests : 60
+
+  if (!session?.user_id || maxDailyRequests <= 0) return
+
+  const used = await TrialSessionMessageModel.countDailyByUserAndKeySource(
+    session.user_id,
+    'platform_temp'
+  )
+  if (used >= maxDailyRequests) {
+    throw buildError(
+      `平台临时 Key 今日调用次数已达上限（${maxDailyRequests}），请在个人中心配置自己的模型 Key`,
+      429,
+      'trial_platform_quota_exceeded'
+    )
+  }
+}
+
 function applyTrialSandboxOverrides(config) {
   if (!config) return config
 
@@ -126,7 +223,25 @@ function applyTrialSandboxOverrides(config) {
   }
 }
 
-export async function resolveTrialSandboxLlmConfig(session = null) {
+export async function resolveTrialSandboxLlmConfig(session = null, options = {}) {
+  const runtimeOverride = normalizeRuntimeOverride(options.runtimeOverride)
+  if (runtimeOverride) {
+    return {
+      ...runtimeOverride,
+      __source: 'session_temp',
+      __source_id: null,
+    }
+  }
+
+  const userConfig = await resolveUserLlmConfig(session?.user_id || options.userId, options)
+  if (userConfig && userConfig.is_enabled !== false) {
+    return {
+      ...userConfig,
+      __source: 'user_config',
+      __source_id: userConfig.id,
+    }
+  }
+
   const metadata = session?.metadata && typeof session.metadata === 'object'
     ? session.metadata
     : {}
@@ -140,16 +255,33 @@ export async function resolveTrialSandboxLlmConfig(session = null) {
   if (llmConfigId) {
     const config = await LlmConfigModel.findById(llmConfigId)
     if (config && config.is_enabled !== false) {
-      return config
+      await assertPlatformTempKeyPolicy(session, config)
+      return {
+        ...config,
+        __source: 'platform_temp',
+        __source_id: config.id || null,
+      }
     }
   }
 
   const activeConfig = await LlmConfigModel.findActive('trial')
   if (activeConfig && activeConfig.is_enabled !== false) {
-    return applyTrialSandboxOverrides(activeConfig)
+    const withOverrides = applyTrialSandboxOverrides(activeConfig)
+    await assertPlatformTempKeyPolicy(session, withOverrides)
+    return {
+      ...withOverrides,
+      __source: 'platform_temp',
+      __source_id: activeConfig.id || null,
+    }
   }
 
-  return applyTrialSandboxOverrides(getEnvLlmConfig())
+  const envConfig = applyTrialSandboxOverrides(getEnvLlmConfig())
+  await assertPlatformTempKeyPolicy(session, envConfig)
+  return {
+    ...envConfig,
+    __source: 'platform_temp',
+    __source_id: null,
+  }
 }
 
 export function buildTrialSandboxLlmEnv(config) {
@@ -207,6 +339,8 @@ export function buildTrialSandboxLlmMetadata(config) {
 
   return {
     llm_config_id: resolvedConfig.id || null,
+    source: resolvedConfig.__source || 'platform_temp',
+    source_id: resolvedConfig.__source_id || null,
     provider_name: normalizeLowerText(resolvedConfig.provider_name) || compatibility,
     compatibility,
     auth_type: authType,

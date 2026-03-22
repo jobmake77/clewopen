@@ -29,6 +29,7 @@ export async function runPromptSession(session, files, history, userMessage, opt
   const systemPrompt = buildSystemPrompt(session, files, history)
   const response = await callLLM(systemPrompt, userMessage.trim(), {
     attachments: Array.isArray(options.attachments) ? options.attachments : [],
+    config: options.llmConfig || undefined,
   })
 
   if (session.workspace_path) {
