@@ -8,7 +8,7 @@ function sanitizeUserLlmConfigPayload(record) {
   if (!record) return null
   return {
     ...record,
-    apiKeyMasked: record.api_key ? maskSecret(record.api_key) : '',
+    apiKeyMasked: record.api_key ? maskSecret(record.api_key) : '已保存（不回显）',
   }
 }
 
