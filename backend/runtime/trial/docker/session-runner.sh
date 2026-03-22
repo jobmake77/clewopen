@@ -447,6 +447,16 @@ const fs = require('fs')
 try {
   const request = JSON.parse(fs.readFileSync(process.env.REQUEST_FILE, 'utf8'))
   const message = String(request?.userMessage || request?.message || '').trim()
+  const attachments = Array.isArray(request?.attachments) ? request.attachments : []
+  const imageCount = attachments.filter((item) => String(item?.kind || '').toLowerCase() === 'image').length
+  if (imageCount > 0) {
+    if (message) {
+      process.stdout.write(`${message}\n\n[用户附加了 ${imageCount} 张图片]`)
+    } else {
+      process.stdout.write(`[用户附加了 ${imageCount} 张图片，请结合图片内容回答]`)
+    }
+    process.exit(0)
+  }
   process.stdout.write(message)
 } catch (error) {
   console.error(`Failed to read request payload: ${error.message}`)
@@ -462,14 +472,45 @@ const fs = require('fs')
 try {
   const request = JSON.parse(fs.readFileSync(process.env.REQUEST_FILE, 'utf8'))
   const message = String(request?.userMessage || request?.message || '').trim()
-  if (!message) {
+  const attachments = Array.isArray(request?.attachments) ? request.attachments : []
+
+  if (!message && attachments.length === 0) {
     throw new Error('Request message is empty')
   }
+
+  const imageBlocks = attachments
+    .filter((item) => String(item?.kind || '').toLowerCase() === 'image')
+    .map((item) => {
+      const mimeType = String(item?.mimeType || '').trim().toLowerCase()
+      const dataUrl = String(item?.dataUrl || '').trim()
+      if (!mimeType || !dataUrl.startsWith(`data:${mimeType};base64,`)) {
+        return null
+      }
+      return {
+        type: 'input_image',
+        image_url: dataUrl,
+      }
+    })
+    .filter(Boolean)
+
+  const contentBlocks = []
+  if (message) {
+    contentBlocks.push({
+      type: 'input_text',
+      text: message,
+    })
+  }
+  contentBlocks.push(...imageBlocks)
 
   process.stdout.write(
     JSON.stringify({
       model: `openclaw:${process.env.TRIAL_OPENCLAW_AGENT_ID || 'trial-session'}`,
-      input: message,
+      input: [
+        {
+          role: 'user',
+          content: contentBlocks,
+        },
+      ],
       stream: true,
     })
   )

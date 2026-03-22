@@ -179,8 +179,9 @@ async function appendLogFile(workspacePath, fileName, content) {
   }
 }
 
-async function writeConversationState(session, history, userMessage) {
+async function writeConversationState(session, history, userMessage, options = {}) {
   const stateDir = path.join(session.workspace_path, 'state')
+  const attachments = Array.isArray(options.attachments) ? options.attachments : []
   const payload = history.map((item) => ({
     role: item.role,
     content: item.content,
@@ -195,6 +196,14 @@ async function writeConversationState(session, history, userMessage) {
         sessionId: session.id,
         agentId: session.agent_id,
         userMessage: userMessage.trim(),
+        attachments: attachments.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          mimeType: item.mimeType,
+          fileName: item.fileName,
+          sizeBytes: item.sizeBytes,
+          dataUrl: item.dataUrl,
+        })),
         history: payload,
       },
       null,
@@ -398,14 +407,14 @@ async function finalizeContainerSession(session, stdout, stderr) {
   }
 }
 
-export async function runContainerSession(session, history, userMessage) {
+export async function runContainerSession(session, history, userMessage, options = {}) {
   const config = getTrialRuntimeConfig()
   const containerName = getContainerNameFromSession(session)
   if (!containerName) {
     throw new Error('Container sandbox reference is missing')
   }
 
-  await writeConversationState(session, history, userMessage)
+  await writeConversationState(session, history, userMessage, options)
 
   const { envMap } = await buildSandboxEnv(session, userMessage)
   const args = buildDockerExecArgs(containerName, config.runCommand, envMap)
@@ -438,7 +447,7 @@ export async function runContainerSessionStream(session, history, userMessage, o
     throw new Error('Container sandbox reference is missing')
   }
 
-  await writeConversationState(session, history, userMessage)
+  await writeConversationState(session, history, userMessage, options)
 
   const { envMap } = await buildSandboxEnv(session, userMessage)
   const args = buildDockerExecArgs(containerName, config.runCommand, envMap)

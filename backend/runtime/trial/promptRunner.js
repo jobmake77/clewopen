@@ -25,9 +25,11 @@ function buildSystemPrompt(session, files, history) {
   return sections.join('\n\n---\n\n') || `你是 ${session.agent_name}。${session.agent_description || ''}`
 }
 
-export async function runPromptSession(session, files, history, userMessage) {
+export async function runPromptSession(session, files, history, userMessage, options = {}) {
   const systemPrompt = buildSystemPrompt(session, files, history)
-  const response = await callLLM(systemPrompt, userMessage.trim())
+  const response = await callLLM(systemPrompt, userMessage.trim(), {
+    attachments: Array.isArray(options.attachments) ? options.attachments : [],
+  })
 
   if (session.workspace_path) {
     const stateFile = path.join(session.workspace_path, 'state', 'conversation.json')

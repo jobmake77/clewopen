@@ -20,8 +20,14 @@ export const getTrialSession = (sessionId) => {
   })
 }
 
-export const sendTrialSessionMessage = (sessionId, message) => {
-  return api.post(`/trial-sessions/${sessionId}/messages`, { message }, {
+export const getTrialSessionCapabilities = (sessionId) => {
+  return api.get(`/trial-sessions/${sessionId}/capabilities`, {
+    timeout: TRIAL_REQUEST_TIMEOUT_MS,
+  })
+}
+
+export const sendTrialSessionMessage = (sessionId, message, attachments = []) => {
+  return api.post(`/trial-sessions/${sessionId}/messages`, { message, attachments }, {
     timeout: TRIAL_REQUEST_TIMEOUT_MS,
   })
 }
@@ -91,11 +97,11 @@ function flushEventStreamBuffer(buffer, onEvent) {
   return rest
 }
 
-export const streamTrialSessionMessage = async (sessionId, message, handlers = {}) => {
+export const streamTrialSessionMessage = async (sessionId, message, handlers = {}, attachments = []) => {
   const response = await fetch(`/api/trial-sessions/${sessionId}/messages/stream`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, attachments }),
   })
 
   if (!response.ok) {

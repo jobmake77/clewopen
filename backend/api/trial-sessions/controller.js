@@ -5,6 +5,11 @@ import {
   sendTrialMessage,
   streamTrialMessage,
 } from '../../runtime/trial/orchestrator.js'
+import {
+  ensureTrialAttachmentCapabilities,
+  normalizeTrialAttachments,
+} from '../../runtime/trial/mediaAttachments.js'
+import { getTrialInputCapabilities } from '../../services/llmService.js'
 
 function isValidUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -75,6 +80,33 @@ export const getSession = async (req, res, next) => {
   }
 }
 
+export const getSessionCapabilities = async (req, res, next) => {
+  try {
+    if (!ensureValidSessionId(req, res)) {
+      return
+    }
+
+    const session = await TrialSessionModel.findById(req.params.sessionId)
+    if (!session || session.user_id !== req.user.id) {
+      return res.status(404).json({
+        success: false,
+        error: { message: '试用会话不存在' },
+      })
+    }
+
+    const input = await getTrialInputCapabilities()
+    res.json({
+      success: true,
+      data: {
+        sessionId: session.id,
+        input,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const sendSessionMessage = async (req, res, next) => {
   try {
     if (!ensureValidSessionId(req, res)) {
@@ -82,10 +114,13 @@ export const sendSessionMessage = async (req, res, next) => {
     }
 
     const { message } = req.body
+    const attachments = normalizeTrialAttachments(req.body?.attachments)
+    ensureTrialAttachmentCapabilities(attachments)
     const result = await sendTrialMessage({
       sessionId: req.params.sessionId,
       userId: req.user.id,
       message,
+      attachments,
     })
 
     res.json({
@@ -114,6 +149,23 @@ export const sendSessionMessageStream = async (req, res, next) => {
   }
 
   const { message } = req.body
+  let attachments = []
+
+  try {
+    attachments = normalizeTrialAttachments(req.body?.attachments)
+    ensureTrialAttachmentCapabilities(attachments)
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(error.statusCode || 400).json({
+        success: false,
+        error: {
+          message: error.message,
+          code: error.code || 'invalid_trial_attachments',
+        },
+      })
+      return
+    }
+  }
 
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache, no-transform')
@@ -139,6 +191,7 @@ export const sendSessionMessageStream = async (req, res, next) => {
       sessionId: req.params.sessionId,
       userId: req.user.id,
       message,
+      attachments,
       onEvent: (event) => {
         if (res.writableEnded || res.destroyed) return
         writeSseEvent(res, event.type || 'message', {

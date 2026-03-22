@@ -22,6 +22,19 @@ function inferProvider(config) {
   return 'openai'
 }
 
+function inferVisionByModel(modelId = '') {
+  const model = String(modelId || '').toLowerCase()
+  if (!model) return false
+  return (
+    model.includes('gpt-4o') ||
+    model.includes('gpt-4.1') ||
+    model.includes('claude-3') ||
+    model.includes('claude-4') ||
+    model.includes('gemini') ||
+    model.includes('vision')
+  )
+}
+
 function isKimiCompatible(config) {
   return inferProvider(config) === 'kimi'
 }
@@ -110,12 +123,30 @@ function getOpenAICompatRuntimeOptions(config) {
 }
 
 function buildOpenAICompatiblePayload(config, systemPrompt, userMessage) {
+  const attachments = Array.isArray(config.__attachments) ? config.__attachments : []
   const runtimeOptions = getOpenAICompatRuntimeOptions(config)
+  const contentBlocks = []
+  if (userMessage) {
+    contentBlocks.push({ type: 'text', text: userMessage })
+  }
+  for (const item of attachments) {
+    if (String(item?.kind || '').toLowerCase() !== 'image') continue
+    const dataUrl = String(item?.dataUrl || '').trim()
+    if (!dataUrl) continue
+    contentBlocks.push({
+      type: 'image_url',
+      image_url: { url: dataUrl },
+    })
+  }
+
   const payload = {
     model: config.model_id,
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
+      {
+        role: 'user',
+        content: contentBlocks.length > 0 ? contentBlocks : userMessage,
+      },
     ],
     stream: runtimeOptions.stream,
   }
@@ -200,6 +231,38 @@ export async function getActiveConfig() {
   return LlmConfigModel.findActive('trial')
 }
 
+export async function getTrialInputCapabilities() {
+  const config = await getActiveConfig()
+  if (!config) {
+    return {
+      imageInputEnabled: false,
+      audioInputEnabled: false,
+      videoInputEnabled: false,
+      reason: '未检测到可用的试用模型配置',
+      provider: null,
+      model: null,
+      source: 'missing-active-config',
+    }
+  }
+
+  const capabilities = Array.isArray(config.capabilities) ? config.capabilities.map((item) => String(item).toLowerCase()) : []
+  const hasVisionCapabilityFlag = capabilities.includes('vision') || capabilities.includes('image') || capabilities.includes('multimodal')
+  const modelLooksVisionReady = inferVisionByModel(config.model_id)
+  const imageInputEnabled = hasVisionCapabilityFlag || modelLooksVisionReady
+
+  return {
+    imageInputEnabled,
+    audioInputEnabled: false,
+    videoInputEnabled: false,
+    reason: imageInputEnabled
+      ? '当前模型已启用图片输入能力'
+      : '当前模型未声明视觉能力，图片输入可能无法被模型理解',
+    provider: config.provider_name || inferProvider(config),
+    model: config.model_id,
+    source: hasVisionCapabilityFlag ? 'llm-capabilities-field' : modelLooksVisionReady ? 'model-heuristic' : 'no-vision-detected',
+  }
+}
+
 export async function getRoutingCandidates(role = 'trial') {
   const configs = await LlmConfigModel.findRoutingCandidates(role)
   if (configs.length > 0) return configs
@@ -235,6 +298,7 @@ export async function callLLM(systemPrompt, userMessage, options = {}) {
     const resolvedConfig = {
       ...candidate,
       api_url: resolveApiUrl(candidate),
+      __attachments: Array.isArray(options.attachments) ? options.attachments : [],
     }
 
     try {

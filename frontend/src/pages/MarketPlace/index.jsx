@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Row, Col, Card, Statistic, Spin, Tag } from 'antd'
+import { Row, Col, Card, Statistic, Spin } from 'antd'
 import {
   RobotOutlined,
   UserOutlined,
@@ -24,16 +24,6 @@ const categoryLabelMap = {
   business: '商业分析',
   education: '教育培训',
   other: '其他',
-}
-
-const categoryColorMap = {
-  development: '#1890ff',
-  'data-analysis': '#52c41a',
-  automation: '#fa8c16',
-  content: '#eb2f96',
-  business: '#722ed1',
-  education: '#13c2c2',
-  other: '#8c8c8c',
 }
 
 function MarketPlace() {
@@ -117,28 +107,7 @@ function MarketPlace() {
         </Row>
       </Spin>
 
-      {/* 2. 分类数据看板 */}
-      {stats?.categories && stats.categories.length > 0 && (
-        <Card title="Agent 分类分布" style={{ marginBottom: 24 }} className="cream-panel">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            {stats.categories.map((cat) => (
-              <Tag
-                key={cat.category}
-                color={categoryColorMap[cat.category] || '#8c8c8c'}
-                style={{ padding: '6px 16px', fontSize: 14, cursor: 'pointer', borderRadius: 6 }}
-                onClick={() => navigate(`/agents?category=${cat.category}`)}
-              >
-                {categoryLabelMap[cat.category] || cat.category}
-                {' '}
-                <strong>{cat.count}</strong>
-                <span style={{ opacity: 0.7, marginLeft: 4 }}>({cat.percentage}%)</span>
-              </Tag>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* 3. 热门 Agent（卡片网格） */}
+      {/* 2. 热门 Agent（卡片网格） */}
       <section style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 18 }}>
           <div>

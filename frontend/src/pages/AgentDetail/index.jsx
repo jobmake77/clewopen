@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress } from 'antd'
-import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined, AppstoreOutlined, ApartmentOutlined, ReadOutlined, MessageOutlined } from '@ant-design/icons'
+import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined, AppstoreOutlined, ApartmentOutlined, ReadOutlined, MessageOutlined, PictureOutlined, DeleteOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
 import api from '../../services/api'
@@ -12,11 +12,15 @@ import {
   endTrialSession,
   getTrialHistory,
   getTrialSession,
+  getTrialSessionCapabilities,
   streamTrialSessionMessage,
 } from '../../services/trialService'
 
 const { TextArea } = Input
 const TRIAL_POLL_INTERVAL_MS = 2000
+const TRIAL_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const TRIAL_MAX_ATTACHMENTS_PER_MESSAGE = 4
+const TRIAL_IMAGE_MIME_WHITELIST = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 const TRIAL_STATUS_META = {
   provisioning: { label: '准备中', color: 'processing' },
   active: { label: '可对话', color: 'green' },
@@ -53,6 +57,15 @@ function shouldPollTrialSession(status, provisioningStage) {
   return Boolean(provisioningStage) && !['ready', 'failed'].includes(provisioningStage)
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function AgentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -80,10 +93,13 @@ function AgentDetail() {
   const [trialSessionStatus, setTrialSessionStatus] = useState(null)
   const [trialProvisioning, setTrialProvisioning] = useState(null)
   const [trialExpiresAt, setTrialExpiresAt] = useState(null)
+  const [trialAttachments, setTrialAttachments] = useState([])
+  const [trialInputCapabilities, setTrialInputCapabilities] = useState(null)
   const [trialCloseConfirmVisible, setTrialCloseConfirmVisible] = useState(false)
   const [endingTrial, setEndingTrial] = useState(false)
   const [trialSendingElapsedSec, setTrialSendingElapsedSec] = useState(0)
   const trialMessagesRef = useRef(null)
+  const trialImageInputRef = useRef(null)
   const trialStreamingMessageIdRef = useRef(null)
   const trialLocalMessageCounterRef = useRef(0)
 
@@ -127,6 +143,7 @@ function AgentDetail() {
         id: msg.id,
         role: msg.role,
         content: msg.content,
+        attachments: Array.isArray(msg.metadata?.attachments) ? msg.metadata.attachments : [],
         time: msg.created_at,
         statusLines: [],
         streaming: false,
@@ -150,6 +167,8 @@ function AgentDetail() {
     setTrialSessionStatus(null)
     setTrialProvisioning(null)
     setTrialExpiresAt(null)
+    setTrialAttachments([])
+    setTrialInputCapabilities(null)
     setTrialCloseConfirmVisible(false)
     setEndingTrial(false)
     setTrialSendingElapsedSec(0)
@@ -451,6 +470,17 @@ function AgentDetail() {
     }
   }
 
+  const loadTrialCapabilities = async (sessionId) => {
+    try {
+      const res = await getTrialSessionCapabilities(sessionId)
+      if (res.success) {
+        setTrialInputCapabilities(res.data?.input || null)
+      }
+    } catch (error) {
+      console.error('Failed to load trial capabilities:', error)
+    }
+  }
+
   const openTrialModal = async () => {
     if (!isAuthenticated) {
       message.warning('请先登录')
@@ -461,6 +491,7 @@ function AgentDetail() {
     if (trialSessionId) {
       try {
         await loadTrialSession(trialSessionId)
+        await loadTrialCapabilities(trialSessionId)
       } catch (error) {
         console.error('Failed to refresh existing trial session:', error)
       }
@@ -477,6 +508,7 @@ function AgentDetail() {
         setTrialExpiresAt(res.data.expiresAt)
         setTrialMessages([])
         setTrialLoaded(res.data.status !== 'provisioning')
+        await loadTrialCapabilities(res.data.sessionId)
 
         if (res.data.status !== 'provisioning') {
           await loadTrialSession(res.data.sessionId, res.data.remainingTrials)
@@ -515,6 +547,7 @@ function AgentDetail() {
       setTrialSessionId(null)
       setTrialProvisioning(null)
       setTrialExpiresAt(null)
+      setTrialInputCapabilities(null)
       setTrialSessionStatus('completed')
       trialStreamingMessageIdRef.current = null
       await refreshRemainingTrials()
@@ -540,9 +573,67 @@ function AgentDetail() {
     setTrialVisible(false)
   }
 
+  const handleOpenTrialImagePicker = () => {
+    trialImageInputRef.current?.click()
+  }
+
+  const handleRemoveTrialAttachment = (attachmentId) => {
+    setTrialAttachments((prev) => prev.filter((item) => item.id !== attachmentId))
+  }
+
+  const handleSelectTrialImages = async (event) => {
+    const files = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (files.length === 0) return
+
+    if (trialAttachments.length >= TRIAL_MAX_ATTACHMENTS_PER_MESSAGE) {
+      message.warning(`单条消息最多 ${TRIAL_MAX_ATTACHMENTS_PER_MESSAGE} 张图片`)
+      return
+    }
+
+    const availableSlots = Math.max(0, TRIAL_MAX_ATTACHMENTS_PER_MESSAGE - trialAttachments.length)
+    const selectedFiles = files.slice(0, availableSlots)
+    const nextAttachments = []
+
+    for (const file of selectedFiles) {
+      if (!TRIAL_IMAGE_MIME_WHITELIST.has(file.type)) {
+        message.warning(`${file.name} 格式不支持，仅支持 PNG/JPEG/WEBP/GIF`)
+        continue
+      }
+
+      if (file.size > TRIAL_MAX_IMAGE_BYTES) {
+        message.warning(`${file.name} 超过 5MB 限制`)
+        continue
+      }
+
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        nextAttachments.push({
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          kind: 'image',
+          mimeType: file.type,
+          fileName: file.name,
+          sizeBytes: file.size,
+          dataUrl,
+        })
+      } catch (error) {
+        message.error(`${file.name} 读取失败`)
+      }
+    }
+
+    if (nextAttachments.length > 0) {
+      setTrialAttachments((prev) => [...prev, ...nextAttachments].slice(0, TRIAL_MAX_ATTACHMENTS_PER_MESSAGE))
+    }
+  }
+
   const handleTrialSend = async () => {
+    if (trialAttachments.length > 0 && !canUseTrialImageInput) {
+      message.warning('当前试用模型未启用图片理解，请先切换支持视觉能力的模型')
+      return
+    }
+
     if (
-      !trialInput.trim() ||
+      (!trialInput.trim() && trialAttachments.length === 0) ||
       trialSending ||
       remainingTrials <= 0 ||
       !trialSessionId ||
@@ -552,8 +643,10 @@ function AgentDetail() {
     }
 
     const userMsg = trialInput.trim()
+    const outgoingAttachments = [...trialAttachments]
     setTrialInput('')
-    appendTrialMessage({ role: 'user', content: userMsg })
+    setTrialAttachments([])
+    appendTrialMessage({ role: 'user', content: userMsg, attachments: outgoingAttachments })
     startStreamingAssistantMessage(
       trialSessionStatus === 'provisioning'
         ? '消息已排队，正在等待试用环境就绪'
@@ -597,7 +690,7 @@ function AgentDetail() {
             setTrialExpiresAt(data?.expiresAt || null)
           }
         },
-      })
+      }, outgoingAttachments)
 
       if (!finalEvent && trialSessionId) {
         await loadTrialSession(trialSessionId)
@@ -641,9 +734,11 @@ function AgentDetail() {
   const showTrialProvisioning = isTrialPreparing || isTrialWarming
   const canInteractWithTrialSession =
     !!trialSessionId && ['active', 'provisioning'].includes(trialSessionStatus)
+  const canUseTrialImageInput = trialInputCapabilities?.imageInputEnabled !== false
+  const hasTrialInputPayload = !!trialInput.trim() || trialAttachments.length > 0
   const canSendTrialMessage =
     remainingTrials > 0 &&
-    !!trialInput.trim() &&
+    hasTrialInputPayload &&
     !trialSending &&
     canInteractWithTrialSession
   const trialPlaceholder =
@@ -655,7 +750,7 @@ function AgentDetail() {
           ? '可以先输入问题，后台仍在预热流式引擎，首条回复可能稍慢...'
         : trialSessionStatus === 'failed'
           ? '试用环境准备失败，请重新开始'
-          : '输入消息试用 Agent...'
+          : '输入消息，或上传图片后发送...'
 
   if (loading || !currentAgent) {
     return (
@@ -1121,6 +1216,17 @@ function AgentDetail() {
           </div>
         )}
 
+        {trialInputCapabilities && (
+          <div style={{ marginBottom: 12 }}>
+            <Alert
+              type={trialInputCapabilities.imageInputEnabled ? 'success' : 'warning'}
+              showIcon
+              message={trialInputCapabilities.imageInputEnabled ? '当前试用模型支持图片输入' : '当前试用模型可能不支持图片理解'}
+              description={trialInputCapabilities.reason || '可在管理后台切换支持视觉能力的试用模型。'}
+            />
+          </div>
+        )}
+
         <div
           ref={trialMessagesRef}
           style={{
@@ -1184,11 +1290,71 @@ function AgentDetail() {
                       </div>
                     )}
                   </div>
-                ) : msg.content}
+                ) : (
+                  <div>
+                    {msg.content ? <div style={{ marginBottom: msg.attachments?.length ? 8 : 0 }}>{msg.content}</div> : null}
+                    {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {msg.attachments.map((attachment) => (
+                          <div
+                            key={attachment.id || `${msg.id}-${attachment.fileName}`}
+                            style={{
+                              background: 'rgba(255,255,255,0.2)',
+                              borderRadius: 8,
+                              padding: '6px 8px',
+                              fontSize: 12,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <PictureOutlined />
+                              <span>{attachment.fileName || '图片附件'}</span>
+                            </div>
+                            {attachment.dataUrl && (
+                              <img
+                                src={attachment.dataUrl}
+                                alt={attachment.fileName || 'image'}
+                                style={{ marginTop: 6, maxWidth: 180, borderRadius: 6, display: 'block' }}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
+
+        {trialAttachments.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+            {trialAttachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  border: '1px solid var(--cream-border)',
+                  background: '#fff',
+                  borderRadius: 999,
+                  padding: '4px 10px',
+                  fontSize: 12,
+                }}
+              >
+                <PictureOutlined />
+                <span>{attachment.fileName}</span>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleRemoveTrialAttachment(attachment.id)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8 }}>
           <Input.TextArea
@@ -1200,6 +1366,27 @@ function AgentDetail() {
             autoSize={{ minRows: 1, maxRows: 3 }}
             style={{ flex: 1 }}
           />
+          <input
+            ref={trialImageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleSelectTrialImages}
+          />
+          <Button
+            icon={<PictureOutlined />}
+            onClick={handleOpenTrialImagePicker}
+            disabled={
+              remainingTrials <= 0 ||
+              trialSending ||
+              !canInteractWithTrialSession ||
+              trialAttachments.length >= TRIAL_MAX_ATTACHMENTS_PER_MESSAGE ||
+              !canUseTrialImageInput
+            }
+          >
+            图片
+          </Button>
           <Button
             type="primary"
             icon={<SendOutlined />}

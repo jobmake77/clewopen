@@ -18,6 +18,10 @@ import {
 import { buildSessionWorkspace, loadSessionWorkspaceFiles } from './sessionBuilder.js'
 import { runPromptSession } from './promptRunner.js'
 import { ensureAgentPackageUsable, ensureAgentPackageUsableByPath } from '../../utils/agentPackageReader.js'
+import {
+  buildAttachmentSummary,
+  buildUserMessageForModel,
+} from './mediaAttachments.js'
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000
 const MAX_ACTIVE_SESSIONS_PER_USER = 1
@@ -144,17 +148,17 @@ async function destroySessionSandbox(session) {
   await destroyLocalWorkspace(session.workspace_path)
 }
 
-async function runSessionMessage(session, files, history, message) {
+async function runSessionMessage(session, files, history, message, attachments = []) {
   if (session.runtime_type === 'container') {
-    return runContainerSession(session, history, message)
+    return runContainerSession(session, history, message, { attachments })
   }
 
-  return runPromptSession(session, files, history, message)
+  return runPromptSession(session, files, history, message, { attachments })
 }
 
-async function runSessionMessageStream(session, files, history, message, onEvent) {
+async function runSessionMessageStream(session, files, history, message, onEvent, attachments = []) {
   if (session.runtime_type === 'container') {
-    return runContainerSessionStream(session, history, message, { onEvent })
+    return runContainerSessionStream(session, history, message, { onEvent, attachments })
   }
 
   onEvent?.({
@@ -163,7 +167,7 @@ async function runSessionMessageStream(session, files, history, message, onEvent
     message: '正在准备试用提示词',
   })
 
-  const result = await runPromptSession(session, files, history, message)
+  const result = await runPromptSession(session, files, history, message, { attachments })
 
   onEvent?.({
     type: 'status',
@@ -240,13 +244,14 @@ async function waitForTrialSessionActivation(
 }
 
 async function loadTrialMessageContext(sessionId, userId, rawMessage, options = {}) {
-  if (!rawMessage || !rawMessage.trim()) {
+  const attachments = Array.isArray(options.attachments) ? options.attachments : []
+  if ((!rawMessage || !rawMessage.trim()) && attachments.length === 0) {
     const err = new Error('消息内容不能为空')
     err.statusCode = 400
     throw err
   }
 
-  const message = rawMessage.trim()
+  const message = String(rawMessage || '').trim()
   let session = await TrialSessionModel.findById(sessionId)
   if (!session || session.user_id !== userId) {
     const err = new Error('试用会话不存在')
@@ -299,6 +304,7 @@ async function loadTrialMessageContext(sessionId, userId, rawMessage, options = 
     history,
     files,
     message,
+    attachments,
   }
 }
 
@@ -422,8 +428,10 @@ function startBackgroundGatewayWarmup(session, workspace, agent, sandboxMetadata
 }
 
 async function executeTrialMessage(context, options = {}) {
-  const { session, history, files, message } = context
+  const { session, history, files, message, attachments } = context
   const onEvent = options.onEvent
+  const modelMessage = buildUserMessageForModel(message, attachments)
+  const attachmentSummary = buildAttachmentSummary(attachments)
 
   activeMessageTasks.add(session.id)
   try {
@@ -437,13 +445,14 @@ async function executeTrialMessage(context, options = {}) {
       session_id: session.id,
       role: 'user',
       content: message,
+      metadata: attachmentSummary.length > 0 ? { attachments: attachmentSummary } : null,
     })
 
     let result
     try {
       result = onEvent
-        ? await runSessionMessageStream(session, files, history, message, onEvent)
-        : await runSessionMessage(session, files, history, message)
+        ? await runSessionMessageStream(session, files, history, modelMessage, onEvent, attachments)
+        : await runSessionMessage(session, files, history, modelMessage, attachments)
     } catch (error) {
       await handleTrialMessageFailure(session, error)
       throw error
@@ -759,13 +768,14 @@ export async function createTrialSession({ userId, agentId, packageOverride = nu
   }
 }
 
-export async function sendTrialMessage({ sessionId, userId, message }) {
-  const context = await loadTrialMessageContext(sessionId, userId, message)
+export async function sendTrialMessage({ sessionId, userId, message, attachments = [] }) {
+  const context = await loadTrialMessageContext(sessionId, userId, message, { attachments })
   return executeTrialMessage(context)
 }
 
-export async function streamTrialMessage({ sessionId, userId, message, onEvent }) {
+export async function streamTrialMessage({ sessionId, userId, message, attachments = [], onEvent }) {
   const context = await loadTrialMessageContext(sessionId, userId, message, {
+    attachments,
     onProvisioningProgress: onEvent,
   })
   return executeTrialMessage(context, { onEvent })

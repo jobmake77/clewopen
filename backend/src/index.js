@@ -47,7 +47,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
 
-app.use(express.json())
+app.use(express.json({ limit: process.env.API_JSON_LIMIT || '12mb' }))
 app.use(express.urlencoded({ extended: true }))
 
 // 请求日志
