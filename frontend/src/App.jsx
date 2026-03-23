@@ -1,6 +1,7 @@
 import { Routes, Route, useNavigate } from 'react-router-dom'
 import { Layout, Result, Button } from 'antd'
 import MarketPlace from './pages/MarketPlace'
+import AgentMarket from './pages/AgentMarket'
 import AgentDetail from './pages/AgentDetail'
 import SkillMarket from './pages/SkillMarket'
 import McpMarket from './pages/McpMarket'
@@ -59,6 +60,7 @@ function App() {
               <Content style={{ padding: '24px 20px 36px' }}>
                 <Routes>
                   <Route path="/" element={<MarketPlace />} />
+                  <Route path="/agents" element={<AgentMarket />} />
                   <Route path="/agent/:id" element={<AgentDetail />} />
                   <Route path="/skills" element={<SkillMarket />} />
                   <Route path="/skills/:id" element={<SkillDetail />} />

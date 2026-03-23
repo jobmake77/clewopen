@@ -3,6 +3,7 @@ import AgentModel from '../../models/Agent.js'
 import AgentTrialModel from '../../models/AgentTrial.js'
 import UserLlmConfigModel from '../../models/UserLlmConfig.js'
 import { maskSecret } from '../../utils/redaction.js'
+import { testLlmConfig } from '../../services/llmService.js'
 
 function sanitizeUserLlmConfigPayload(record) {
   if (!record) return null
@@ -300,5 +301,59 @@ export const deleteMyLlmConfig = async (req, res, next) => {
     })
   } catch (error) {
     next(error)
+  }
+}
+
+export const testMyLlmConfigConnection = async (req, res, next) => {
+  try {
+    const { configId, message: sampleMessage } = req.body || {}
+    let config = null
+
+    if (configId) {
+      config = await UserLlmConfigModel.findUserConfigById(req.user.id, configId)
+      if (!config) {
+        return res.status(404).json({
+          success: false,
+          error: { message: '配置不存在' },
+        })
+      }
+    } else {
+      const { provider_name, provider, api_url, apiUrl, model_id, model, api_key, apiKey, auth_type, authType } = req.body || {}
+      if (!(provider_name || provider) || !(api_url || apiUrl) || !(model_id || model) || !(api_key || apiKey)) {
+        return res.status(400).json({
+          success: false,
+          error: { message: '请完整填写厂商、Base URL、模型和 API Key 后再测试连接' },
+        })
+      }
+
+      config = {
+        provider_name: String(provider_name || provider).trim().toLowerCase(),
+        api_url: String(api_url || apiUrl).trim(),
+        model_id: String(model_id || model).trim(),
+        api_key: String(api_key || apiKey).trim(),
+        auth_type: String(auth_type || authType || 'bearer').trim().toLowerCase(),
+      }
+    }
+
+    const startedAt = Date.now()
+    const output = await testLlmConfig(config, sampleMessage || 'Reply with exactly: HEALTHCHECK_OK')
+    const latencyMs = Date.now() - startedAt
+
+    res.json({
+      success: true,
+      data: {
+        ok: true,
+        latencyMs,
+        model: config.model_id,
+        provider: config.provider_name,
+        preview: String(output || '').slice(0, 120),
+      },
+      message: '模型连接测试成功',
+    })
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: { message: `模型连接测试失败：${error.message}` },
+    })
   }
 }

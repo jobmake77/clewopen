@@ -29,15 +29,45 @@ export const CustomOrderModel = {
     return result.rows[0];
   },
 
-  async findAll({ page = 1, pageSize = 20, status, category }) {
+  async findAll({ page = 1, pageSize = 20, status, category, sortBy = 'latest' }) {
     let sql = `
       SELECT co.*,
              u.username as user_name,
              u.avatar_url as user_avatar,
-             d.username as developer_name
+             d.username as developer_name,
+             COALESCE(msg_stats.message_count, 0) AS message_count,
+             COALESCE(sub_stats.submission_count, 0) AS submission_count,
+             last_msg.last_message_at,
+             last_msg.last_message_content,
+             last_msg.last_message_sender_name,
+             GREATEST(
+               co.updated_at,
+               COALESCE(last_msg.last_message_at, co.updated_at),
+               COALESCE(sub_stats.last_submission_at, co.updated_at)
+             ) AS last_activity_at
       FROM custom_orders co
       LEFT JOIN users u ON co.user_id = u.id
       LEFT JOIN users d ON co.developer_id = d.id
+      LEFT JOIN (
+        SELECT order_id, COUNT(*)::int AS message_count
+        FROM custom_order_messages
+        GROUP BY order_id
+      ) msg_stats ON msg_stats.order_id = co.id
+      LEFT JOIN (
+        SELECT order_id, COUNT(*)::int AS submission_count, MAX(created_at) AS last_submission_at
+        FROM custom_order_submissions
+        GROUP BY order_id
+      ) sub_stats ON sub_stats.order_id = co.id
+      LEFT JOIN LATERAL (
+        SELECT m.created_at AS last_message_at,
+               m.content AS last_message_content,
+               sender.username AS last_message_sender_name
+        FROM custom_order_messages m
+        LEFT JOIN users sender ON sender.id = m.sender_id
+        WHERE m.order_id = co.id
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) last_msg ON true
       WHERE co.deleted_at IS NULL
     `;
     const params = [];
@@ -55,7 +85,13 @@ export const CustomOrderModel = {
       paramIndex++;
     }
 
-    sql += ` ORDER BY co.created_at DESC`;
+    if (sortBy === 'hot') {
+      sql += ` ORDER BY (COALESCE(msg_stats.message_count, 0) * 2 + COALESCE(sub_stats.submission_count, 0) * 3) DESC, last_activity_at DESC`;
+    } else if (sortBy === 'budget') {
+      sql += ` ORDER BY COALESCE(co.budget_max, co.budget_min, 0) DESC, last_activity_at DESC`;
+    } else {
+      sql += ` ORDER BY last_activity_at DESC`;
+    }
 
     const offset = (page - 1) * pageSize;
     sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;

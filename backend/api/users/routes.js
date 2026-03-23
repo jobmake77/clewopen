@@ -10,6 +10,7 @@ import {
   createMyLlmConfig,
   updateMyLlmConfig,
   deleteMyLlmConfig,
+  testMyLlmConfigConnection,
 } from './controller.js'
 import { authenticate, authorize } from '../../middleware/auth.js'
 
@@ -22,6 +23,7 @@ router.post('/admin/:userId/agents/:agentId/trial-quota/grant', authenticate, au
 
 router.get('/me/llm-configs', authenticate, listMyLlmConfigs)
 router.post('/me/llm-configs', authenticate, createMyLlmConfig)
+router.post('/me/llm-configs/test-connection', authenticate, testMyLlmConfigConnection)
 router.put('/me/llm-configs/:configId', authenticate, updateMyLlmConfig)
 router.delete('/me/llm-configs/:configId', authenticate, deleteMyLlmConfig)
 

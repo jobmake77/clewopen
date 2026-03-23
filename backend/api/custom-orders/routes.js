@@ -83,12 +83,13 @@ function ensureOrderEditable(order, user) {
 // 获取定制需求列表（公开）
 router.get('/', async (req, res, next) => {
   try {
-    const { page = 1, pageSize = 20, status, category } = req.query
+    const { page = 1, pageSize = 20, status, category, sortBy = 'latest' } = req.query
     const result = await CustomOrderModel.findAll({
       page: parseInt(page, 10),
       pageSize: parseInt(pageSize, 10),
       status,
       category,
+      sortBy,
     })
     res.json({ success: true, data: result })
   } catch (error) {

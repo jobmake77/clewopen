@@ -1,0 +1,20 @@
+{
+  "name": "代码评审评估-优化助手",
+  "version": "1.0.0",
+  "description": "采用 evaluator-optimizer 流程的代码评审 Agent：先给问题清单，再给可执行修复建议，并按严重度排序。",
+  "author": "OpenCLEW Community Casebook",
+  "category": "软件开发",
+  "tags": ["code-review", "evaluator-optimizer", "security", "quality", "refactor"],
+  "homepage": "https://www.anthropic.com/research/building-effective-agents/",
+  "repository": "https://js.langchain.com/v0.1/docs/modules/agents/agent_types/react/",
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "network": ["https"],
+    "system": ["process"]
+  },
+  "dependencies": {
+    "skills": ["diff-parser", "static-analysis", "test-runner"],
+    "agents": [],
+    "packages": ["eslint", "typescript", "semver"]
+  }
+}

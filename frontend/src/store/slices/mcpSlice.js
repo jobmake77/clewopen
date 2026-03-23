@@ -3,9 +3,18 @@ import { getMcps, getMcpById, getTrendingMcps } from '../../services/mcpService'
 
 export const fetchMcps = createAsyncThunk(
   'mcp/fetchMcps',
-  async ({ page = 1, pageSize = 20, category, search, sort, sourcePlatform, sourceType }) => {
-    const response = await getMcps({ page, pageSize, category, search, sort, sourcePlatform, sourceType })
-    return response.data
+  async ({ page = 1, pageSize = 20, category, search, sort, sourcePlatform, sourceType }, { rejectWithValue }) => {
+    try {
+      const response = await getMcps({ page, pageSize, category, search, sort, sourcePlatform, sourceType })
+      return response.data
+    } catch (error) {
+      const message =
+        error.response?.data?.error?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        '加载 MCP 列表失败'
+      return rejectWithValue(message)
+    }
   }
 )
 
@@ -45,15 +54,17 @@ const mcpSlice = createSlice({
     builder
       .addCase(fetchMcps.pending, (state) => {
         state.loading = true
+        state.error = null
       })
       .addCase(fetchMcps.fulfilled, (state, action) => {
         state.loading = false
         state.list = action.payload.items
         state.total = action.payload.total
+        state.error = null
       })
       .addCase(fetchMcps.rejected, (state, action) => {
         state.loading = false
-        state.error = action.error.message
+        state.error = action.payload || action.error.message
       })
       .addCase(fetchMcpDetail.pending, (state) => {
         state.loading = true

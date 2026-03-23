@@ -381,6 +381,162 @@ pre {
   background: linear-gradient(90deg, var(--accent-blue), #5f7fda) !important;
 }
 
+.custom-thread-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.custom-thread-hotboard {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(30, 76, 207, 0.07), transparent 38%),
+    color-mix(in srgb, var(--cream-card) 90%, #fff 10%);
+}
+
+.custom-thread-hot-card {
+  border: 1px solid color-mix(in srgb, var(--cream-border) 80%, #fff 20%);
+  background: #fffdf9;
+}
+
+.custom-thread-list .ant-list-item {
+  border-bottom: 1px solid var(--cream-border);
+}
+
+.custom-thread-list-item {
+  padding: 14px 10px !important;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.custom-thread-list-item:hover {
+  background: color-mix(in srgb, var(--surface-muted) 78%, #fff 22%);
+}
+
+.custom-thread-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.custom-thread-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.custom-thread-title {
+  margin: 8px 0 8px;
+  font-size: 18px;
+  line-height: 1.26;
+}
+
+.custom-thread-excerpt {
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+}
+
+.custom-thread-last-reply {
+  margin: -2px 0 10px;
+  color: color-mix(in srgb, var(--ink-muted) 88%, #3a4f8d 12%);
+  font-size: 12px;
+  background: color-mix(in srgb, var(--surface-muted) 74%, #fff 26%);
+  border: 1px solid color-mix(in srgb, var(--cream-border) 84%, #fff 16%);
+  border-radius: 999px;
+  padding: 4px 10px;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.custom-thread-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.custom-thread-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.custom-thread-main,
+.custom-thread-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.custom-thread-post-card .ant-card-body,
+.custom-thread-comments-card .ant-card-body {
+  padding: 20px !important;
+}
+
+.custom-thread-post-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.custom-thread-pinned-card {
+  border: 1px solid color-mix(in srgb, var(--status-success) 26%, var(--cream-border) 74%);
+  background:
+    linear-gradient(0deg, rgba(79, 139, 111, 0.05), rgba(79, 139, 111, 0.05)),
+    color-mix(in srgb, var(--cream-card) 88%, #fff 12%);
+  box-shadow: 0 14px 30px -22px rgba(79, 139, 111, 0.5);
+}
+
+.custom-thread-pinned-head .ant-tag {
+  font-weight: 600;
+}
+
+.custom-thread-comments-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.custom-thread-comment-item {
+  border-radius: 10px;
+  padding: 12px !important;
+}
+
+.custom-thread-comment-item:hover {
+  background: color-mix(in srgb, var(--surface-muted) 80%, #fff 20%);
+}
+
+.custom-thread-comment-item .ant-btn-link {
+  color: var(--accent-blue);
+}
+
+.custom-thread-comment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.custom-thread-reply-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--cream-border);
+}
+
+.custom-thread-dispute-item {
+  padding: 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-muted) 70%, #fff 30%);
+}
+
 @media (max-width: 768px) {
   .page-shell {
     padding-inline: 2px;
@@ -430,5 +586,32 @@ pre {
 
   .agent-detail-tabs .ant-tabs-tab-btn {
     font-size: 12px;
+  }
+
+  .custom-thread-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .custom-thread-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .custom-thread-title-row,
+  .custom-thread-post-head,
+  .custom-thread-comment-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .custom-thread-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-thread-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
 }

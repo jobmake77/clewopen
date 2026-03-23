@@ -15,3 +15,7 @@ export function updateMyLlmConfig(configId, payload) {
 export function deleteMyLlmConfig(configId) {
   return api.delete(`/users/me/llm-configs/${configId}`)
 }
+
+export function testMyLlmConfigConnection(payload) {
+  return api.post('/users/me/llm-configs/test-connection', payload)
+}

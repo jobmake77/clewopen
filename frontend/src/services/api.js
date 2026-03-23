@@ -1,7 +1,10 @@
 import axios from 'axios'
 
+const configuredApiBaseUrl = (import.meta.env?.VITE_API_BASE_URL || '').trim()
+const resolvedBaseUrl = configuredApiBaseUrl || '/api'
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: resolvedBaseUrl,
   timeout: 10000,
 })
 
@@ -29,6 +32,13 @@ api.interceptors.response.use(
     return response.data
   },
   (error) => {
+    if (!error.response && error.message === 'Network Error') {
+      const hint = configuredApiBaseUrl
+        ? `无法连接后端：${configuredApiBaseUrl}`
+        : '无法连接后端，请检查 Vite 代理目标（VITE_API_PROXY_TARGET）和后端端口'
+      error.message = hint
+    }
+
     if (error.response?.status === 401) {
       // Token 过期或无效，清除登录状态
       localStorage.removeItem('token')

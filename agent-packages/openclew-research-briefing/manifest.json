@@ -1,0 +1,20 @@
+{
+  "name": "OpenCLEW Research Briefing Agent",
+  "version": "1.0.0",
+  "description": "OpenCLEW 研究编排 Agent：面向调研任务拆解、证据聚合、结论输出，强调来源质量与可追溯性。",
+  "author": "OpenCLEW Practice Cases",
+  "category": "数据分析",
+  "tags": ["openclew", "research", "briefing", "orchestration", "evidence"],
+  "homepage": "https://github.com/jobmake77/openclaw",
+  "repository": "https://www.anthropic.com/research/building-effective-agents/",
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "network": ["https"],
+    "system": []
+  },
+  "dependencies": {
+    "skills": ["web-search", "citation", "reporting"],
+    "agents": [],
+    "packages": ["axios", "cheerio", "dayjs"]
+  }
+}

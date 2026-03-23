@@ -1,0 +1,20 @@
+{
+  "name": "OpenCLEW Release Steward",
+  "version": "1.0.0",
+  "description": "OpenCLEW 发布与交付管控 Agent：执行发布前检查、变更摘要、回滚准备与发布后验证。",
+  "author": "OpenCLEW Practice Cases",
+  "category": "软件开发",
+  "tags": ["openclew", "release", "qa", "deployment", "rollback"],
+  "homepage": "https://github.com/jobmake77/openclaw",
+  "repository": "https://platform.openai.com/docs/guides/agents",
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "network": ["https"],
+    "system": ["process", "env"]
+  },
+  "dependencies": {
+    "skills": ["checks", "deploy-verify", "changelog"],
+    "agents": [],
+    "packages": ["semver", "yaml", "zx"]
+  }
+}

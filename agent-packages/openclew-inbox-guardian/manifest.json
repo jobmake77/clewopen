@@ -1,0 +1,20 @@
+{
+  "name": "OpenCLEW Inbox Guardian",
+  "version": "1.0.0",
+  "description": "用于自动化收件箱与任务处理的守护型 Agent，强调先确认后执行、危险动作双重门禁、全流程可追踪。",
+  "author": "OpenCLEW Practice Cases",
+  "category": "通用办公",
+  "tags": ["openclew", "inbox", "automation", "safety", "guardrails"],
+  "homepage": "https://x.com/openclaw",
+  "repository": "https://github.com/jobmake77/openclaw",
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "network": ["https"],
+    "system": ["process"]
+  },
+  "dependencies": {
+    "skills": ["checks", "triage", "incident-log"],
+    "agents": [],
+    "packages": ["zod", "dayjs"]
+  }
+}

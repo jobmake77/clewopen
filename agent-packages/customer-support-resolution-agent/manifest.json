@@ -1,0 +1,20 @@
+{
+  "name": "客户支持分流与闭环助手",
+  "version": "1.0.0",
+  "description": "面向电商/订阅产品的客服 Agent，按意图分流、调用工单与订单工具、生成可审计的解决方案。",
+  "author": "OpenCLEW Community Casebook",
+  "category": "通用办公",
+  "tags": ["customer-support", "routing", "tool-use", "resolution", "operations"],
+  "homepage": "https://cookbook.openai.com/examples/using_tool_required_for_customer_service",
+  "repository": "https://www.anthropic.com/research/building-effective-agents/",
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "network": ["https"],
+    "system": []
+  },
+  "dependencies": {
+    "skills": ["kb-search", "ticketing", "order-status"],
+    "agents": [],
+    "packages": ["axios", "zod"]
+  }
+}

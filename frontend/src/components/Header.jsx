@@ -53,8 +53,14 @@ function Header() {
     {
       key: 'home',
       icon: <HomeOutlined />,
-      label: 'Agent 市场',
+      label: '首页',
       onClick: () => navigate('/'),
+    },
+    {
+      key: 'agents',
+      icon: <ShoppingOutlined />,
+      label: 'Agent 库',
+      onClick: () => navigate('/agents'),
     },
     {
       key: 'skills',
@@ -76,7 +82,8 @@ function Header() {
     },
   ]
   const inferSelectedMenuKey = (() => {
-    if (location.pathname === '/' || location.pathname.startsWith('/agent/')) return 'home'
+    if (location.pathname === '/') return 'home'
+    if (location.pathname.startsWith('/agents') || location.pathname.startsWith('/agent/')) return 'agents'
     if (location.pathname.startsWith('/skills')) return 'skills'
     if (location.pathname.startsWith('/mcps')) return 'mcps'
     if (location.pathname.startsWith('/custom-order')) return 'custom'

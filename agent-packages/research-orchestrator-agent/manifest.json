@@ -1,0 +1,20 @@
+{
+  "name": "多源研究编排助手",
+  "version": "1.0.0",
+  "description": "面向研究/情报任务的 orchestrator-worker Agent，支持拆解问题、并行检索、证据归并与可追溯结论输出。",
+  "author": "OpenCLEW Community Casebook",
+  "category": "数据分析",
+  "tags": ["research", "orchestrator", "citation", "fact-check", "analysis"],
+  "homepage": "https://www.anthropic.com/research/building-effective-agents/",
+  "repository": "https://cookbook.openai.com/examples/using_tool_required_for_customer_service",
+  "permissions": {
+    "filesystem": ["read", "write"],
+    "network": ["https"],
+    "system": []
+  },
+  "dependencies": {
+    "skills": ["web-search", "source-ranker", "report-writer"],
+    "agents": [],
+    "packages": ["axios", "cheerio", "dayjs"]
+  }
+}
