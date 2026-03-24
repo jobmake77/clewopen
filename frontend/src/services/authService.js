@@ -41,6 +41,42 @@ const authService = {
     return response
   },
 
+  async sendEmailLoginCode(email) {
+    return api.post('/auth/email/send-code', { email })
+  },
+
+  async verifyEmailLoginCode(email, code, username) {
+    const response = await api.post('/auth/email/verify-code', { email, code, username })
+    if (response.success) {
+      localStorage.setItem('token', response.data.token)
+      localStorage.setItem('user', JSON.stringify(response.data.user))
+    }
+    return response
+  },
+
+  async getGithubLoginUrl(redirect = '/login') {
+    return api.get('/auth/github/url', { params: { redirect } })
+  },
+
+  async exchangeSupabaseSession(accessToken) {
+    const response = await api.post('/auth/supabase/exchange', { accessToken })
+    if (response.success) {
+      localStorage.setItem('token', response.data.token)
+      localStorage.setItem('user', JSON.stringify(response.data.user))
+    }
+    return response
+  },
+
+  setToken(token) {
+    if (!token) return
+    localStorage.setItem('token', token)
+  },
+
+  setUser(user) {
+    if (!user) return
+    localStorage.setItem('user', JSON.stringify(user))
+  },
+
   /**
    * 用户登出
    */

@@ -58,10 +58,40 @@ npm run start
 
 ```env
 VITE_API_BASE_URL=https://api.your-domain.com/api
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<supabase_anon_key>
 ```
 
 说明：
 - 线上前端应直接请求后端域名，不用本地 Vite 代理。
+
+## 3.1 Supabase Auth（GitHub + 邮箱 OTP/Resend）
+
+以 `clewopen.com` 为例：
+
+1. Supabase Dashboard -> Authentication -> URL Configuration  
+   - Site URL: `https://clewopen.com`
+   - Redirect URLs:
+     - `https://clewopen.com/login`
+     - `https://www.clewopen.com/login`（如使用 www）
+
+2. Authentication -> Providers -> GitHub  
+   - 开启 GitHub
+   - 在 GitHub OAuth App 里回调地址配置为：  
+     `https://<project-ref>.supabase.co/auth/v1/callback`
+
+3. Authentication -> SMTP  
+   - 使用 Resend 的 SMTP 凭据填写（或使用 Supabase 的默认邮件能力）
+
+4. 后端环境变量（用于会话换本地 JWT）：
+
+```env
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_ANON_KEY=<supabase_anon_key>
+SUPABASE_SERVICE_ROLE_KEY=<supabase_service_role_key>
+AUTH_FRONTEND_BASE_URL=https://clewopen.com
+AUTH_PUBLIC_BASE_URL=https://clewopen.com
+```
 
 ## 4. 验证清单
 

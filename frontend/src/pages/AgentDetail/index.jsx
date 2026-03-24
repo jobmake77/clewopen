@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Progress, Radio, Checkbox, Select, Switch } from 'antd'
+import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, Collapse, message, Alert, Radio, Checkbox, Select, Switch } from 'antd'
 import { DownloadOutlined, FileTextOutlined, LinkOutlined, PlayCircleOutlined, SendOutlined, AppstoreOutlined, ApartmentOutlined, ReadOutlined, MessageOutlined, PictureOutlined, DeleteOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import { fetchAgentDetail } from '../../store/slices/agentSlice'
@@ -28,6 +28,8 @@ const TRIAL_POLL_INTERVAL_MS = 2000
 const TRIAL_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const TRIAL_MAX_ATTACHMENTS_PER_MESSAGE = 4
 const TRIAL_IMAGE_MIME_WHITELIST = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const TRIAL_LOBSTER_SPRITE_URL = '/trial/lobster-sprite.png'
+const TRIAL_LOBSTER_FRAME_SIZE = 256
 const TRIAL_STATUS_META = {
   provisioning: { label: '准备中', color: 'processing' },
   active: { label: '可对话', color: 'green' },
@@ -126,6 +128,9 @@ function AgentDetail() {
   const [trialTempApiUrl, setTrialTempApiUrl] = useState('')
   const [trialTempModel, setTrialTempModel] = useState('')
   const [trialTempApiKey, setTrialTempApiKey] = useState('')
+  const [trialLobsterSpriteReady, setTrialLobsterSpriteReady] = useState(false)
+  const [trialLobsterStartHold, setTrialLobsterStartHold] = useState(false)
+  const [trialLobsterEndHold, setTrialLobsterEndHold] = useState(false)
   const trialMessagesRef = useRef(null)
   const trialImageInputRef = useRef(null)
   const trialStreamingMessageIdRef = useRef(null)
@@ -222,6 +227,13 @@ function AgentDetail() {
     trialStreamingMessageIdRef.current = null
     trialLocalMessageCounterRef.current = 0
   }, [dispatch, id, loadReviews])
+
+  useEffect(() => {
+    const sprite = new Image()
+    sprite.onload = () => setTrialLobsterSpriteReady(true)
+    sprite.onerror = () => setTrialLobsterSpriteReady(false)
+    sprite.src = TRIAL_LOBSTER_SPRITE_URL
+  }, [])
 
   useEffect(() => {
     if (!trialSending) {
@@ -692,6 +704,21 @@ function AgentDetail() {
     }
   }
 
+  const applyTrialSessionBootstrap = async (payload) => {
+    setTrialSessionId(payload.sessionId)
+    setTrialSessionStatus(payload.status)
+    setRemainingTrials(payload.remainingTrials)
+    setTrialProvisioning(payload.provisioning || null)
+    setTrialExpiresAt(payload.expiresAt)
+    setTrialMessages([])
+    setTrialLoaded(payload.status !== 'provisioning')
+    await loadTrialCapabilities(payload.sessionId)
+
+    if (payload.status !== 'provisioning') {
+      await loadTrialSession(payload.sessionId, payload.remainingTrials)
+    }
+  }
+
   const openTrialModal = async () => {
     if (!isAuthenticated) {
       message.warning('请先登录')
@@ -713,21 +740,37 @@ function AgentDetail() {
     try {
       const res = await createTrialSession(id)
       if (res.success) {
-        setTrialSessionId(res.data.sessionId)
-        setTrialSessionStatus(res.data.status)
-        setRemainingTrials(res.data.remainingTrials)
-        setTrialProvisioning(res.data.provisioning || null)
-        setTrialExpiresAt(res.data.expiresAt)
-        setTrialMessages([])
-        setTrialLoaded(res.data.status !== 'provisioning')
-        await loadTrialCapabilities(res.data.sessionId)
-
-        if (res.data.status !== 'provisioning') {
-          await loadTrialSession(res.data.sessionId, res.data.remainingTrials)
-        }
+        await applyTrialSessionBootstrap(res.data)
       }
     } catch (error) {
-      const errMsg = error.response?.data?.error?.message || error.response?.data?.error || '无法创建试用会话'
+      const errPayload = error.response?.data?.error || {}
+      const errMsg = errPayload?.message || error.response?.data?.error || '无法创建试用会话'
+      if (errPayload?.code === 'active_trial_session_exists' && errPayload?.activeSession?.id) {
+        Modal.confirm({
+          title: '检测到未结束的试用会话',
+          content: `你有一个正在进行的试用会话（${errPayload.activeSession.agentName || '未知 Agent'}），是否立即结束并继续当前试用？`,
+          okText: '结束并继续',
+          cancelText: '取消',
+          onOk: async () => {
+            try {
+              await endTrialSession(errPayload.activeSession.id)
+              message.success('已结束旧会话，正在启动当前试用')
+              const retry = await createTrialSession(id)
+              if (retry.success) {
+                await applyTrialSessionBootstrap(retry.data)
+              }
+            } catch (retryError) {
+              const retryMsg = retryError.response?.data?.error?.message || retryError.response?.data?.error || '重新启动试用失败'
+              message.error(retryMsg)
+              setTrialVisible(false)
+            }
+          },
+          onCancel: () => {
+            setTrialVisible(false)
+          },
+        })
+        return
+      }
       message.error(errMsg)
       setTrialVisible(false)
 
@@ -1007,6 +1050,37 @@ function AgentDetail() {
     Boolean(trialProvisioning?.stage) &&
     !['ready', 'failed'].includes(trialProvisioning.stage)
   const showTrialProvisioning = isTrialPreparing || isTrialWarming
+  const trialProvisioningPercent = provisioningMeta?.percent || (isTrialPreparing ? 20 : 0)
+  const isTrialProvisioningComplete =
+    trialProvisioningPercent >= 100 || trialProvisioning?.stage === 'ready'
+
+  useEffect(() => {
+    if (!trialVisible || !showTrialProvisioning) {
+      setTrialLobsterStartHold(false)
+      return
+    }
+    setTrialLobsterStartHold(true)
+    const timerId = window.setTimeout(() => setTrialLobsterStartHold(false), 500)
+    return () => window.clearTimeout(timerId)
+  }, [trialVisible, trialSessionId, showTrialProvisioning])
+
+  useEffect(() => {
+    if (!trialVisible || !isTrialProvisioningComplete) {
+      setTrialLobsterEndHold(false)
+      return
+    }
+    setTrialLobsterEndHold(true)
+    const timerId = window.setTimeout(() => setTrialLobsterEndHold(false), 500)
+    return () => window.clearTimeout(timerId)
+  }, [trialVisible, trialSessionId, isTrialProvisioningComplete])
+
+  const showTrialProvisioningPanel = showTrialProvisioning || trialLobsterEndHold
+  const trialLobsterFrame = (() => {
+    if (trialLobsterEndHold || trialProvisioningPercent >= 100) return 4
+    if (trialLobsterStartHold || trialProvisioningPercent < 25) return 1
+    if (trialProvisioningPercent < 50) return 2
+    return 3
+  })()
   const canInteractWithTrialSession =
     !!trialSessionId && ['active', 'provisioning'].includes(trialSessionStatus)
   const canUseTrialImageInput = trialInputCapabilities?.imageInputEnabled !== false
@@ -1092,7 +1166,7 @@ function AgentDetail() {
             <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
           ) : preview ? (
             <Collapse
-              defaultActiveKey={previewFiles.filter(f => preview[f.key]).map(f => f.key)}
+              defaultActiveKey={[]}
               items={previewFiles
                 .filter(f => preview[f.key])
                 .map(f => ({
@@ -1632,7 +1706,7 @@ function AgentDetail() {
           </div>
         )}
 
-        {showTrialProvisioning && (
+        {showTrialProvisioningPanel && (
           <div style={{ marginBottom: 12 }}>
             <div
               style={{
@@ -1652,12 +1726,35 @@ function AgentDetail() {
                     : '首次试用可能需要 30-90 秒，请稍候。')}
               </div>
             </div>
-            <Progress
-              percent={provisioningMeta?.percent || 20}
-              status="active"
-              size="small"
-              style={{ marginTop: 8, marginBottom: 0 }}
-            />
+            <div className="trial-lobster-progress" style={{ marginTop: 8 }}>
+              <div className="trial-lobster-progress-track" />
+              <div
+                className="trial-lobster-progress-fill"
+                style={{ width: `${Math.max(0, Math.min(100, trialLobsterEndHold ? 100 : trialProvisioningPercent))}%` }}
+              />
+              <div
+                className="trial-lobster-progress-thumb"
+                style={{
+                  left: `${Math.max(2, Math.min(98, trialLobsterEndHold ? 100 : trialProvisioningPercent))}%`,
+                }}
+              >
+                {trialLobsterSpriteReady ? (
+                  <div
+                    className="trial-lobster-sprite-inline"
+                    style={{
+                      backgroundImage: `url(${TRIAL_LOBSTER_SPRITE_URL})`,
+                      backgroundSize: `${TRIAL_LOBSTER_FRAME_SIZE * 4}px ${TRIAL_LOBSTER_FRAME_SIZE}px`,
+                      backgroundPosition: `-${(trialLobsterFrame - 1) * TRIAL_LOBSTER_FRAME_SIZE}px 0px`,
+                    }}
+                  />
+                ) : (
+                  <span className="trial-lobster-fallback-inline" aria-hidden>🦞</span>
+                )}
+              </div>
+              <span className="trial-lobster-progress-text">
+                {Math.round(trialLobsterEndHold ? 100 : trialProvisioningPercent)}%
+              </span>
+            </div>
           </div>
         )}
 

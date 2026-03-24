@@ -26,6 +26,30 @@ export const register = createAsyncThunk(
   }
 )
 
+export const sendEmailLoginCode = createAsyncThunk(
+  'auth/sendEmailLoginCode',
+  async ({ email }, { rejectWithValue }) => {
+    try {
+      const response = await authService.sendEmailLoginCode(email)
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || '发送验证码失败')
+    }
+  }
+)
+
+export const loginWithEmailCode = createAsyncThunk(
+  'auth/loginWithEmailCode',
+  async ({ email, code, username }, { rejectWithValue }) => {
+    try {
+      const response = await authService.verifyEmailLoginCode(email, code, username)
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || '邮箱登录失败')
+    }
+  }
+)
+
 export const getCurrentUser = createAsyncThunk(
   'auth/getCurrentUser',
   async (_, { rejectWithValue }) => {
@@ -69,7 +93,14 @@ const authSlice = createSlice({
     },
     clearError: (state) => {
       state.error = null
-    }
+    },
+    hydrateToken: (state, action) => {
+      const { token } = action.payload || {}
+      if (!token) return
+      authService.setToken(token)
+      state.token = token
+      state.isAuthenticated = true
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -100,6 +131,33 @@ const authSlice = createSlice({
         state.isAuthenticated = true
       })
       .addCase(register.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload
+      })
+      // Send email code
+      .addCase(sendEmailLoginCode.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(sendEmailLoginCode.fulfilled, (state) => {
+        state.loading = false
+      })
+      .addCase(sendEmailLoginCode.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload
+      })
+      // Email code login
+      .addCase(loginWithEmailCode.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(loginWithEmailCode.fulfilled, (state, action) => {
+        state.loading = false
+        state.user = action.payload.user
+        state.token = action.payload.token
+        state.isAuthenticated = true
+      })
+      .addCase(loginWithEmailCode.rejected, (state, action) => {
         state.loading = false
         state.error = action.payload
       })
@@ -136,5 +194,5 @@ const authSlice = createSlice({
   }
 })
 
-export const { logout, clearError } = authSlice.actions
+export const { logout, clearError, hydrateToken } = authSlice.actions
 export default authSlice.reducer
