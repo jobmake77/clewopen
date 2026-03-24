@@ -244,20 +244,6 @@ export default function Login() {
           </Link>
         </div>
 
-        <div className="test-accounts">
-          <Divider plain>测试账号</Divider>
-          <div className="test-account-list">
-            <div>
-              <strong>普通用户:</strong> user1@example.com / password123
-            </div>
-            <div>
-              <strong>开发者:</strong> dev1@example.com / password123
-            </div>
-            <div>
-              <strong>管理员:</strong> admin@clewopen.com / password123
-            </div>
-          </div>
-        </div>
       </Card>
     </div>
   )
