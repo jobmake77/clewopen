@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Row, Col, Input, Select, Pagination, Spin, Alert } from 'antd'
+import { Row, Col, Input, Select, Pagination, Spin, Alert, Tabs } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import { fetchMcps } from '../../store/slices/mcpSlice'
 import ResourceCard from '../../components/ResourceCard'
@@ -13,6 +13,20 @@ const sortOptions = [
   { label: '星数最多', value: 'stars' },
 ]
 
+const tagFilters = [
+  { label: '全部', value: 'all' },
+  { label: 'MCP', value: 'mcp' },
+  { label: 'AI', value: 'ai' },
+  { label: 'MCP Server', value: 'mcp-server' },
+  { label: 'Claude', value: 'claude' },
+  { label: 'LLM', value: 'llm' },
+  { label: 'AI Agents', value: 'ai-agents' },
+  { label: 'Claude Code', value: 'claude-code' },
+  { label: 'Automation', value: 'automation' },
+  { label: 'MCP Client', value: 'mcp-client' },
+  { label: 'Developer Tools', value: 'developer-tools' },
+]
+
 function McpMarket() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -20,19 +34,21 @@ function McpMarket() {
 
   const [page, setPage] = useState(1)
   const [pageSize] = useState(20)
+  const [activeTag, setActiveTag] = useState('all')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('latest')
   const [sourcePlatform, setSourcePlatform] = useState('all')
+  const mergedSearch = [search, activeTag !== 'all' ? activeTag : ''].filter(Boolean).join(' ').trim()
 
   useEffect(() => {
     dispatch(fetchMcps({
       page,
       pageSize,
-      search: search || undefined,
+      search: mergedSearch || undefined,
       sort,
       sourcePlatform: sourcePlatform === 'all' ? undefined : sourcePlatform,
     }))
-  }, [dispatch, page, pageSize, search, sort, sourcePlatform])
+  }, [dispatch, page, pageSize, mergedSearch, sort, sourcePlatform])
 
   const handleSearch = (value) => {
     setSearch(value)
@@ -49,6 +65,11 @@ function McpMarket() {
     setPage(1)
   }
 
+  const handleTagChange = (value) => {
+    setActiveTag(value)
+    setPage(1)
+  }
+
   return (
     <div className="page-shell">
       {/* 标题 */}
@@ -58,6 +79,14 @@ function McpMarket() {
         <p style={{ color: 'var(--ink-muted)' }}>
           发现和使用 MCP 服务包，为 Agent 提供外部能力接入
         </p>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Tabs
+          activeKey={activeTag}
+          onChange={handleTagChange}
+          items={tagFilters.map((item) => ({ key: item.value, label: item.label }))}
+        />
       </div>
 
       {/* 搜索栏 + 排序 */}

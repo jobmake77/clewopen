@@ -8,13 +8,18 @@ import ResourceCard from '../../components/ResourceCard'
 
 const { Search } = Input
 
-const categories = [
-  { label: '全部', value: '全部' },
-  { label: 'Agent Tool', value: 'agent-tool' },
-  { label: 'Claude Skill', value: 'claude-skill' },
-  { label: 'Codex Skill', value: 'codex-skill' },
-  { label: 'LLM Plugin', value: 'llm-plugin' },
-  { label: 'AI Skill', value: 'ai-skill' },
+const tagFilters = [
+  { label: '全部', value: 'all' },
+  { label: 'AI', value: 'ai' },
+  { label: 'AI Agents', value: 'ai-agents' },
+  { label: 'LLM', value: 'llm' },
+  { label: 'Automation', value: 'automation' },
+  { label: 'MCP', value: 'mcp' },
+  { label: 'Developer Tools', value: 'developer-tools' },
+  { label: 'Prompt Engineering', value: 'prompt-engineering' },
+  { label: 'Function Calling', value: 'function-calling' },
+  { label: 'RAG', value: 'rag' },
+  { label: 'Multi-Agent', value: 'multi-agent' },
 ]
 
 const sortOptions = [
@@ -29,29 +34,30 @@ function SkillMarket() {
 
   const [page, setPage] = useState(1)
   const [pageSize] = useState(20)
-  const [category, setCategory] = useState('全部')
+  const [activeTag, setActiveTag] = useState('all')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('latest')
   const [sourcePlatform, setSourcePlatform] = useState('all')
+
+  const mergedSearch = [search, activeTag !== 'all' ? activeTag : ''].filter(Boolean).join(' ').trim()
 
   useEffect(() => {
     dispatch(fetchSkills({
       page,
       pageSize,
-      category: category === '全部' ? undefined : category,
-      search: search || undefined,
+      search: mergedSearch || undefined,
       sort,
       sourcePlatform: sourcePlatform === 'all' ? undefined : sourcePlatform,
     }))
-  }, [dispatch, page, pageSize, category, search, sort, sourcePlatform])
+  }, [dispatch, page, pageSize, mergedSearch, sort, sourcePlatform])
 
   const handleSearch = (value) => {
     setSearch(value)
     setPage(1)
   }
 
-  const handleCategoryChange = (value) => {
-    setCategory(value)
+  const handleTagChange = (value) => {
+    setActiveTag(value)
     setPage(1)
   }
 
@@ -99,12 +105,12 @@ function SkillMarket() {
         />
       )}
 
-      {/* 分类 Tab + 排序 */}
+      {/* 标签 Tab + 排序 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Tabs
-          activeKey={category}
-          onChange={handleCategoryChange}
-          items={categories.map(c => ({ key: c.value, label: c.label }))}
+          activeKey={activeTag}
+          onChange={handleTagChange}
+          items={tagFilters.map(c => ({ key: c.value, label: c.label }))}
           style={{ flex: 1 }}
         />
         <div style={{ display: 'flex', gap: 12, marginLeft: 16 }}>
