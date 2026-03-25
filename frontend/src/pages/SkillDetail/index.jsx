@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, Modal, Form, Input, message, Space } from 'antd'
-import { DownloadOutlined, StarOutlined, LinkOutlined, GithubOutlined, CopyOutlined } from '@ant-design/icons'
+import { Row, Col, Card, Button, Tag, Rate, Divider, Spin, Tabs, message, Space } from 'antd'
+import { DownloadOutlined, LinkOutlined, GithubOutlined } from '@ant-design/icons'
 import { fetchSkillDetail } from '../../store/slices/skillSlice'
 import api from '../../services/api'
 import { visitSkill } from '../../services/skillService'
-
-const { TextArea } = Input
 
 const sourceLabelMap = {
   github: 'GitHub',
@@ -22,35 +20,17 @@ function SkillDetail() {
   const dispatch = useDispatch()
   const { currentSkill: current, loading } = useSelector((state) => state.skill)
   const { isAuthenticated } = useSelector((state) => state.auth)
-  const [reviews, setReviews] = useState([])
-  const [loadingReviews, setLoadingReviews] = useState(false)
-  const [rateModalVisible, setRateModalVisible] = useState(false)
-  const [submittingRate, setSubmittingRate] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [openingSource, setOpeningSource] = useState(false)
-  const [form] = Form.useForm()
 
   const tags = useMemo(() => {
     if (!current?.tags) return []
     return Array.isArray(current.tags) ? current.tags : String(current.tags).split(',').map(tag => tag.trim()).filter(Boolean)
   }, [current])
 
-  const loadReviews = useCallback(async () => {
-    setLoadingReviews(true)
-    try {
-      const response = await api.get(`/skills/${id}/reviews`)
-      if (response.success) setReviews(response.data.reviews || [])
-    } catch (error) {
-      console.error('Failed to load reviews:', error)
-    } finally {
-      setLoadingReviews(false)
-    }
-  }, [id])
-
   useEffect(() => {
     dispatch(fetchSkillDetail(id))
-    loadReviews()
-  }, [dispatch, id, loadReviews])
+  }, [dispatch, id])
 
   const handleDownload = async () => {
     if (!isAuthenticated) {
@@ -94,43 +74,6 @@ function SkillDetail() {
     }
   }
 
-  const handleCopyLink = async () => {
-    if (!current?.external_url) return
-    try {
-      await navigator.clipboard.writeText(current.external_url)
-      message.success('链接已复制')
-    } catch {
-      message.error('复制失败')
-    }
-  }
-
-  const handleRate = () => {
-    if (!isAuthenticated) {
-      message.warning('请先登录')
-      navigate('/login')
-      return
-    }
-    setRateModalVisible(true)
-  }
-
-  const handleSubmitRate = async (values) => {
-    setSubmittingRate(true)
-    try {
-      const response = await api.post(`/skills/${id}/rate`, values)
-      if (response.success) {
-        message.success('评价已提交，待审核后显示')
-        setRateModalVisible(false)
-        form.resetFields()
-        loadReviews()
-        dispatch(fetchSkillDetail(id))
-      }
-    } catch (error) {
-      message.error(error.response?.data?.error?.message || '评价失败')
-    } finally {
-      setSubmittingRate(false)
-    }
-  }
-
   if (loading || !current) {
     return <div style={{ textAlign: 'center', padding: 100 }}><Spin size="large" /></div>
   }
@@ -147,14 +90,6 @@ function SkillDetail() {
           <h3>功能描述</h3>
           <p>{current.description}</p>
 
-          <h3>接入方式</h3>
-          <pre style={{ background: 'var(--surface-muted)', padding: 16, borderRadius: 8, whiteSpace: 'pre-wrap' }}>
-{`# 在 Agent 的 manifest.json 中声明依赖
-"dependencies": {
-  "skills": ["${current.slug || current.name}"]
-}`}
-          </pre>
-
           {isExternal && current.external_url && (
             <>
               <h3>资源来源</h3>
@@ -162,25 +97,6 @@ function SkillDetail() {
               <p><a href={current.external_url} target="_blank" rel="noreferrer">{current.external_url}</a></p>
             </>
           )}
-        </div>
-      ),
-    },
-    {
-      key: 'reviews',
-      label: `评价 (${reviews.length})`,
-      children: (
-        <div>
-          <Button type="primary" onClick={handleRate} style={{ marginBottom: 16 }}>写评价</Button>
-          {loadingReviews ? <Spin /> : reviews.length > 0 ? reviews.map((review) => (
-            <Card key={review.id} style={{ marginBottom: 16 }}>
-              <div style={{ marginBottom: 8 }}>
-                <strong>{review.username}</strong>
-                <Rate disabled value={review.rating} style={{ marginLeft: 16, fontSize: 14 }} />
-              </div>
-              <p>{review.comment}</p>
-              <p style={{ color: 'var(--ink-muted)', fontSize: 12 }}>{new Date(review.created_at).toLocaleDateString()}</p>
-            </Card>
-          )) : <p>暂无评价</p>}
         </div>
       ),
     },
@@ -230,17 +146,12 @@ function SkillDetail() {
                 <Button type="primary" size="large" block icon={<GithubOutlined />} style={{ marginBottom: 12 }} onClick={handleVisitSource} loading={openingSource}>
                   查看源码
                 </Button>
-                <Button size="large" block icon={<CopyOutlined />} style={{ marginBottom: 12 }} onClick={handleCopyLink}>
-                  复制链接
-                </Button>
               </>
             ) : (
               <Button type="primary" size="large" block icon={<DownloadOutlined />} style={{ marginBottom: 12 }} onClick={handleDownload} loading={downloading}>
                 下载 Skill
               </Button>
             )}
-
-            <Button size="large" block icon={<StarOutlined />} onClick={handleRate}>写评价</Button>
             <Divider />
             <div>
               <h4>Skill 信息</h4>
@@ -256,20 +167,6 @@ function SkillDetail() {
           </Card>
         </Col>
       </Row>
-
-      <Modal title="评价 Skill" open={rateModalVisible} onCancel={() => setRateModalVisible(false)} footer={null}>
-        <Form form={form} onFinish={handleSubmitRate} layout="vertical">
-          <Form.Item name="rating" label="评分" rules={[{ required: true, message: '请选择评分' }]}>
-            <Rate />
-          </Form.Item>
-          <Form.Item name="comment" label="评价内容" rules={[{ required: true, message: '请输入评价内容' }, { min: 10, message: '评价内容至少 10 个字符' }]}>
-            <TextArea rows={4} placeholder="分享你的使用体验..." />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={submittingRate} block>提交评价</Button>
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   )
 }
