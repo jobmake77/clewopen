@@ -45,7 +45,7 @@ function resolvePoolNamespace() {
 
 export function getTrialRuntimeConfig() {
   const poolNamespace = resolvePoolNamespace()
-  const poolSize = parsePositiveInt(process.env.TRIAL_POOL_SIZE, 5)
+  const poolSize = parsePositiveInt(process.env.TRIAL_POOL_SIZE, 1)
   const poolPrewarmGateway = parseBoolean(process.env.TRIAL_POOL_PREWARM_GATEWAY, false)
   const poolGatewayHotSize = Math.max(
     0,
